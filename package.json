@@ -1,0 +1,8 @@
+{
+  "name": "stargazing-forecast",
+  "version": "1.0.0",
+  "description": "Stargazing forecast web app",
+  "scripts": {
+    "start": "npx serve . -s -l $PORT"
+  }
+}
