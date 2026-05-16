@@ -1094,7 +1094,7 @@ function renderForecast(data, lat, lon) {
     const peak  = ns.length ? Math.max(...ns) : 0;
     const peakSlot = slots.find(({ i }) => scores[i] === peak);
     const peakHour = peakSlot ? peakSlot.label : '';
-    if (avg > bestNightScore) { bestNightScore = avg; bestNightIdx = di; }
+    if (peak > bestNightScore) { bestNightScore = peak; bestNightIdx = di; }
     return { date, slots, avg, peak, peakHour };
   });
 
