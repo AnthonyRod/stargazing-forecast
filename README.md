@@ -28,12 +28,12 @@ Cada hora nocturna (18:00–05:59) se calcula un score basado en cuatro variable
 
 | Variable              | Peso  | Fuente                          |
 | --------------------- | ----- | ------------------------------- |
-| Nubosidad             | 40 %  | `cloud_cover`                   |
-| Probabilidad de lluvia| 25 %  | `precipitation_probability`     |
+| Nubosidad             | 45 %  | `cloud_cover`                   |
+| Probabilidad de lluvia| 20 %  | `precipitation_probability`     |
 | Humedad relativa      | 20 %  | `relative_humidity_2m`          |
 | Visibilidad           | 15 %  | `visibility`                    |
 
-Penalización: si el viento supera 20 km/h se descuenta del total.
+Penalización: si el viento supera 20 km/h se descuenta del total. Si la humedad supera 90 % y la visibilidad es menor a 5 km, se aplica una penalización adicional por niebla (score se reduce 50 %).
 
 ### Rangos
 
