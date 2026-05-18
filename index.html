@@ -496,6 +496,63 @@ h1 { font-family:'Outfit',sans-serif; font-weight:800; font-size:clamp(1.2rem,3v
   letter-spacing:.04em;
 }
 
+/* ── TABS ──────────────────────────────────────────── */
+.tabs { display:flex; gap:6px; margin-bottom:16px; }
+.tab {
+  background:var(--surface2); border:1px solid var(--border);
+  color:var(--muted); padding:6px 18px; border-radius:8px;
+  font:inherit; font-size:.75rem; cursor:pointer; transition:all .2s;
+}
+.tab:hover { border-color:var(--text); color:var(--text); }
+.tab.active { background:var(--surface); border-color:var(--good); color:var(--good); }
+.tab-content { display:none; }
+.tab-content.active { display:block; }
+
+/* ── CURRENT CONDITIONS ───────────────────────────── */
+.current-conditions {
+  display:flex; align-items:center; gap:14px;
+  background:var(--surface2); border:1px solid var(--border);
+  border-radius:10px; padding:10px 16px; margin-bottom:14px;
+  flex-wrap:wrap;
+}
+.cond-icon { font-size:1.8rem; line-height:1; }
+.cond-temp { font-size:1.6rem; font-weight:800; color:var(--text); }
+.cond-desc { font-size:.75rem; color:var(--muted); }
+.cond-meta { font-size:.65rem; color:var(--muted); margin-left:auto; display:flex; gap:12px; }
+
+/* ── WEATHER CARDS ────────────────────────────────── */
+.hourly-weather {
+  display:flex; gap:8px; overflow-x:auto; padding-bottom:6px;
+  scrollbar-width:thin; scrollbar-color:var(--border) transparent;
+}
+.w-card {
+  flex-shrink:0; width:80px;
+  background:var(--surface2); border:1px solid var(--border);
+  border-radius:10px; padding:10px 6px; text-align:center;
+}
+.w-card .hour { font-size:.55rem; color:var(--muted); margin-bottom:4px; }
+.w-card .icon { font-size:1.3rem; line-height:1; margin-bottom:2px; }
+.w-card .temp { font-size:.8rem; font-weight:700; color:var(--text); }
+.w-card .feels { font-size:.5rem; color:var(--muted); margin-top:1px; }
+.w-card .precip { font-size:.55rem; color:var(--good); margin-top:2px; }
+.w-card .wind { font-size:.5rem; color:var(--muted); margin-top:1px; }
+
+.daily-weather {
+  display:grid; gap:6px;
+}
+.d-card {
+  display:grid; grid-template-columns:2.5fr 1fr 1.2fr 1.2fr 1fr;
+  align-items:center; gap:8px;
+  background:var(--surface2); border:1px solid var(--border);
+  border-radius:8px; padding:8px 12px;
+}
+.d-card .day { font-size:.7rem; color:var(--text); font-weight:600; }
+.d-card .icon { font-size:1.2rem; text-align:center; }
+.d-card .temps { font-size:.65rem; color:var(--text); text-align:right; }
+.d-card .temps .lo { color:var(--muted); }
+.d-card .precip { font-size:.6rem; color:var(--good); text-align:right; }
+.d-card .wind { font-size:.6rem; color:var(--muted); text-align:right; }
+
 /* ── CHARTS ─────────────────────────────────────────── */
 .chart-section { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:18px; margin-bottom:14px; }
 .section-title {
@@ -516,6 +573,10 @@ footer { margin-top:22px; padding-top:12px; border-top:1px solid var(--border); 
   .header-right { flex-wrap:wrap; }
   .location-card { padding:24px 20px; }
   #map { height:160px; }
+  .d-card { grid-template-columns:2fr 1fr 1.2fr 1fr 1fr; font-size:.7rem; gap:4px; padding:6px 8px; }
+  .w-card { width:68px; padding:8px 4px; }
+  .tabs { gap:4px; }
+  .tab { font-size:.65rem; padding:5px 10px; }
 }
 </style>
 </head>
@@ -603,7 +664,15 @@ footer { margin-top:22px; padding-top:12px; border-top:1px solid var(--border); 
     </div>
   </header>
 
-  <div class="legend">
+  <div class="tabs">
+    <button class="tab active" data-tab="astro">✦ Astro</button>
+    <button class="tab" data-tab="weather">🌤 Clima</button>
+  </div>
+
+  <div class="tab-content tab-astro active">
+    <div class="current-conditions" id="currentConditions"></div>
+
+    <div class="legend">
     <div class="legend-item"><div class="legend-dot" style="background:#40e0a0"></div>Score ≥ 70 Excelente</div>
     <div class="legend-item"><div class="legend-dot" style="background:#f0c060"></div>45–69 Parcial</div>
     <div class="legend-item"><div class="legend-dot" style="background:#e05060"></div>&lt;45 Bloqueado</div>
@@ -625,6 +694,15 @@ footer { margin-top:22px; padding-top:12px; border-top:1px solid var(--border); 
   </div>
 
   <div class="explainer" id="explainer"></div>
+  </div>
+
+  <div class="tab-content tab-weather">
+    <div class="current-conditions" id="weatherCurrent"></div>
+    <div class="section-title" style="margin-bottom:10px">Pronóstico por hora · 24 h</div>
+    <div class="hourly-weather" id="hourlyWeather"></div>
+    <div class="section-title" style="margin-top:20px;margin-bottom:10px">Pronóstico 7 días</div>
+    <div class="daily-weather" id="dailyWeather"></div>
+  </div>
 
   <footer>
     <span>Fuente: Open-Meteo API · <span id="footerModel">best_match</span> · 14 días · se actualiza en cada recarga</span>
@@ -910,10 +988,15 @@ const FALLBACK_MODELS = [
   { name: 'gfs_global',    label: 'GFS (0.25°)' },
 ];
 
+const WEATHER_FIELDS = [
+  'temperature_2m', 'apparent_temperature', 'precipitation', 'weather_code'
+];
+
 function buildApiUrl(lat, lon, model) {
   return `https://api.open-meteo.com/v1/forecast`
     + `?latitude=${lat}&longitude=${lon}`
-    + `&hourly=${REQUIRED_FIELDS.join(',')}`
+    + `&hourly=${REQUIRED_FIELDS.join(',')},${WEATHER_FIELDS.join(',')}`
+    + `&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,weather_code,wind_speed_10m_max,uv_index_max`
     + `&models=${model}&forecast_days=14&timezone=auto`;
 }
 
@@ -1272,6 +1355,130 @@ function renderForecast(data, lat, lon) {
   `;
 }
 
+// ── WEATHER TAB ────────────────────────────────────────────────────────────
+const WMO = {
+  0:{i:'☀️',t:'Despejado'},1:{i:'🌤️',t:'Mayormente despejado'},2:{i:'⛅',t:'Parcial nublado'},3:{i:'☁️',t:'Nublado'},
+  45:{i:'🌫️',t:'Niebla'},48:{i:'🌫️',t:'Niebla'},
+  51:{i:'🌦️',t:'Llovizna'},53:{i:'🌦️',t:'Llovizna'},55:{i:'🌦️',t:'Llovizna'},
+  56:{i:'🌦️',t:'Llovizna helada'},57:{i:'🌦️',t:'Llovizna helada'},
+  61:{i:'🌧️',t:'Lluvia'},63:{i:'🌧️',t:'Lluvia'},65:{i:'🌧️',t:'Lluvia fuerte'},
+  66:{i:'🌧️',t:'Lluvia helada'},67:{i:'🌧️',t:'Lluvia helada'},
+  71:{i:'🌨️',t:'Nieve'},73:{i:'🌨️',t:'Nieve'},75:{i:'🌨️',t:'Nieve fuerte'},
+  77:{i:'🌨️',t:'Granos de nieve'},
+  80:{i:'🌦️',t:'Chubascos'},81:{i:'🌦️',t:'Chubascos'},82:{i:'🌦️',t:'Chubascos'},
+  85:{i:'🌨️',t:'Chubascos de nieve'},86:{i:'🌨️',t:'Chubascos de nieve'},
+  95:{i:'⛈️',t:'Tormenta'},96:{i:'⛈️',t:'Tormenta'},99:{i:'⛈️',t:'Tormenta'},
+};
+
+function wmoIcon(code) { const w = WMO[code]; return w ? w : {i:'❓',t:'Desconocido'}; }
+
+function skyText(cloud) {
+  if (cloud < 20) return 'Despejado';
+  if (cloud < 60) return 'Parcial nublado';
+  return 'Nublado';
+}
+
+function skyIcon(cloud, hour) {
+  const night = hour < 6 || hour >= 18;
+  if (cloud < 20) return night ? '🌙' : '☀️';
+  if (cloud < 60) return night ? '🌙☁️' : '⛅';
+  return '☁️';
+}
+
+function renderWeather(data) {
+  const H = data.hourly;
+  const D = data.daily;
+  if (!H || !D) return;
+
+  const now = new Date();
+  const offsetMs = (data.utc_offset_seconds || 0) * 1000;
+  const localNow = new Date(now.getTime() + offsetMs);
+  const localStr = localNow.toISOString().slice(0, 13).replace('T', '') + ':00';
+  const localHour = localNow.getUTCHours();
+
+  let nowIdx = -1;
+  for (let i = 0; i < H.time.length; i++) {
+    if (H.time[i] >= localStr) { nowIdx = i; break; }
+  }
+  if (nowIdx < 0) nowIdx = H.time.length - 1;
+  nowIdx = Math.max(0, nowIdx);
+
+  const curTemp  = H.temperature_2m?.[nowIdx];
+  const curRh    = H.relative_humidity_2m?.[nowIdx];
+  const curCloud = H.cloud_cover?.[nowIdx] ?? 0;
+  const curCode  = H.weather_code?.[nowIdx] ?? 0;
+
+  const w = wmoIcon(curCode);
+
+  // ── Astro current conditions ──
+  document.getElementById('currentConditions').innerHTML = `
+    <div class="cond-icon">${skyIcon(curCloud, localHour)}</div>
+    <div class="cond-temp">${curTemp != null ? Math.round(curTemp) + '°' : '—'}</div>
+    <div class="cond-desc">${skyText(curCloud)}${curCode > 0 ? ' · ' + w.t : ''}</div>
+    <div class="cond-meta">
+      <span>💧 ${curRh != null ? curRh + '%' : '—'}</span>
+      <span>🌡️ ${H.apparent_temperature?.[nowIdx] != null ? Math.round(H.apparent_temperature[nowIdx]) + '°' : '—'}</span>
+    </div>`;
+
+  // ── Weather current conditions ──
+  document.getElementById('weatherCurrent').innerHTML = `
+    <div class="cond-icon">${w.i}</div>
+    <div class="cond-temp">${curTemp != null ? Math.round(curTemp) + '°' : '—'}</div>
+    <div class="cond-desc">${w.t}${curCloud != null ? ' · ' + skyText(curCloud) : ''}</div>
+    <div class="cond-meta">
+      <span>💧 ${curRh != null ? curRh + '%' : '—'}</span>
+      <span>🌡️ ${H.apparent_temperature?.[nowIdx] != null ? Math.round(H.apparent_temperature[nowIdx]) + '°' : '—'}</span>
+    </div>`;
+
+  // ── 24h forecast ──
+  const slots24 = [];
+  for (let i = nowIdx; i < H.time.length && slots24.length < 24; i++) {
+    const h = parseInt(H.time[i].slice(11, 13));
+    const wc = wmoIcon(H.weather_code?.[i] ?? 0);
+    slots24.push({ hour:h, temp:H.temperature_2m?.[i], feels:H.apparent_temperature?.[i],
+      precip:H.precipitation?.[i], wind:H.wind_speed_10m?.[i], icon:wc.i, code:H.weather_code?.[i] });
+  }
+
+  document.getElementById('hourlyWeather').innerHTML = slots24.map(s => `
+    <div class="w-card">
+      <div class="hour">${String(s.hour).padStart(2,'0')}:00</div>
+      <div class="icon">${s.icon}</div>
+      <div class="temp">${s.temp != null ? Math.round(s.temp) + '°' : '—'}</div>
+      <div class="feels">${s.feels != null ? Math.round(s.feels) + '°' : ''}</div>
+      <div class="precip">${s.precip != null && s.precip > 0 ? s.precip.toFixed(1) + 'mm' : ''}</div>
+      <div class="wind">${s.wind != null ? s.wind.toFixed(0) + 'km/h' : ''}</div>
+    </div>`).join('');
+
+  // ── 7-day forecast ──
+  const days = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+
+  document.getElementById('dailyWeather').innerHTML = D.time.map((date, i) => {
+    const dw = wmoIcon(D.weather_code?.[i] ?? 0);
+    const dt = new Date(date + 'T12:00:00Z');
+    const dayLabel = i === 0 ? 'Hoy' : i === 1 ? 'Mañana' : days[dt.getUTCDay()];
+    return `<div class="d-card">
+      <div class="day">${dayLabel}</div>
+      <div class="icon">${dw.i}</div>
+      <div class="temps">
+        <span class="hi">${D.temperature_2m_max?.[i] != null ? Math.round(D.temperature_2m_max[i]) + '°' : '—'}</span>
+        <span class="lo"> / ${D.temperature_2m_min?.[i] != null ? Math.round(D.temperature_2m_min[i]) + '°' : '—'}</span>
+      </div>
+      <div class="precip">${D.precipitation_sum?.[i] != null && D.precipitation_sum[i] > 0 ? D.precipitation_sum[i].toFixed(1) + 'mm' : '—'}</div>
+      <div class="wind">${D.wind_speed_10m_max?.[i] != null ? D.wind_speed_10m_max[i].toFixed(0) + 'km/h' : '—'}</div>
+    </div>`;
+  }).join('');
+}
+
+// ── TAB SWITCHING ──────────────────────────────────────────────────────────
+document.querySelectorAll('.tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelector('.tab-' + btn.dataset.tab).classList.add('active');
+  });
+});
+
 async function startForecast(lat, lon) {
   currentLat = lat;
   currentLon = lon;
@@ -1283,6 +1490,7 @@ async function startForecast(lat, lon) {
   try {
     const data = await fetchForecast(lat, lon);
     renderForecast(data, lat, lon);
+    renderWeather(data);
 
     document.getElementById('locationOverlay').style.display = 'none';
     document.getElementById('app').style.display = 'block';
@@ -1302,6 +1510,7 @@ async function refreshForecast() {
   try {
     const data = await fetchForecast(currentLat, currentLon);
     renderForecast(data, currentLat, currentLon);
+    renderWeather(data);
     document.getElementById('fetchedAt').textContent =
       new Date().toLocaleTimeString('es-CR', { hour:'2-digit', minute:'2-digit' });
   } catch (err) {
