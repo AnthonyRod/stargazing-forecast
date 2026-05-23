@@ -1378,6 +1378,7 @@ function wmoIcon(code, hour) {
   if (night) {
     if (icon === '☀️') icon = '🌙';
     else if (icon === '🌤️' || icon === '⛅') icon = '🌙☁️';
+    else if (icon === '🌦️') icon = '🌧️';
   }
   return {i: icon, t: w.t};
 }
