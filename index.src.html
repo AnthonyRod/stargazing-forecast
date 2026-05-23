@@ -1370,7 +1370,17 @@ const WMO = {
   95:{i:'⛈️',t:'Tormenta'},96:{i:'⛈️',t:'Tormenta'},99:{i:'⛈️',t:'Tormenta'},
 };
 
-function wmoIcon(code) { const w = WMO[code]; return w ? w : {i:'❓',t:'Desconocido'}; }
+function wmoIcon(code, hour) {
+  const w = WMO[code];
+  if (!w) return {i:'❓',t:'Desconocido'};
+  let icon = w.i;
+  const night = hour != null && (hour < 6 || hour >= 18);
+  if (night) {
+    if (icon === '☀️') icon = '🌙';
+    else if (icon === '🌤️' || icon === '⛅') icon = '🌙☁️';
+  }
+  return {i: icon, t: w.t};
+}
 
 function skyText(cloud) {
   if (cloud < 20) return 'Despejado';
@@ -1408,7 +1418,7 @@ function renderWeather(data) {
   const curCloud = H.cloud_cover?.[nowIdx] ?? 0;
   const curCode  = H.weather_code?.[nowIdx] ?? 0;
 
-  const w = wmoIcon(curCode);
+  const w = wmoIcon(curCode, localHour);
 
   // ── Astro current conditions ──
   document.getElementById('currentConditions').innerHTML = `
@@ -1434,7 +1444,7 @@ function renderWeather(data) {
   const slots24 = [];
   for (let i = nowIdx; i < H.time.length && slots24.length < 24; i++) {
     const h = parseInt(H.time[i].slice(11, 13));
-    const wc = wmoIcon(H.weather_code?.[i] ?? 0);
+    const wc = wmoIcon(H.weather_code?.[i] ?? 0, h);
     slots24.push({ hour:h, temp:H.temperature_2m?.[i], feels:H.apparent_temperature?.[i],
       precip:H.precipitation?.[i], wind:H.wind_speed_10m?.[i], icon:wc.i, code:H.weather_code?.[i] });
   }
