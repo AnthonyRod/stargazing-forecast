@@ -1393,7 +1393,7 @@ function renderWeather(data) {
   const now = new Date();
   const offsetMs = (data.utc_offset_seconds || 0) * 1000;
   const localNow = new Date(now.getTime() + offsetMs);
-  const localStr = localNow.toISOString().slice(0, 13).replace('T', '') + ':00';
+  const localStr = localNow.toISOString().slice(0, 13) + ':00';
   const localHour = localNow.getUTCHours();
 
   let nowIdx = -1;

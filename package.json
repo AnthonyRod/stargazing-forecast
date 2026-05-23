@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Stargazing forecast web app",
   "scripts": {
-    "build": "html-minifier-terser --collapse-whitespace --remove-comments --minify-css true --minify-js true index.html -o index.html",
+    "build": "html-minifier-terser --collapse-whitespace --remove-comments --minify-css true --minify-js true index.src.html -o index.html",
     "start": "npx serve . -s -l $PORT"
   },
   "devDependencies": {
