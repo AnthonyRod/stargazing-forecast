@@ -712,11 +712,12 @@ footer { margin-top:22px; padding-top:12px; border-top:1px solid var(--border); 
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
-let currentLat = 9.7482;
-let currentLon = -83.9959;
+let currentLat = null;
+let currentLon = null;
 let chartInstance = null;
 let geoTimeout = null;
 let map = null, mapMarker = null;
+let userInteracted = false;
 
 // ── DOM REFS ──────────────────────────────────────────────────────────
 const citySearch    = document.getElementById('citySearch');
@@ -786,6 +787,7 @@ function initMapOnFirstShow() {
 }
 
 function applyMapCoords(lat, lon) {
+  userInteracted = true;
   document.getElementById('latInput').value = lat.toFixed(4);
   document.getElementById('lonInput').value = lon.toFixed(4);
   currentLat = lat;
@@ -872,6 +874,7 @@ function closeSearch() {
 }
 
 function selectResult(r) {
+  userInteracted = true;
   const place = `${r.name}${r.admin1 ? ', ' + r.admin1 : ''}${r.country ? ', ' + r.country : ''}`;
   setCoords(r.latitude, r.longitude, place);
   closeSearch();
@@ -928,6 +931,7 @@ document.addEventListener('click', e => {
 
 // ── GEOLOCATION ───────────────────────────────────────────────────────
 async function useGeolocation() {
+  userInteracted = true;
   if (!navigator.geolocation) {
     showLocError('Geolocalización no disponible. Buscá una ciudad o ingresá coordenadas.');
     return;
@@ -970,10 +974,39 @@ async function useGeolocation() {
   }
 }
 
-// ── INIT ───────────────────────────────────────────────────────────────
-latInput.value = currentLat.toFixed(4);
-lonInput.value = currentLon.toFixed(4);
-reverseGeocode(currentLat, currentLon);
+// ── AUTO-DETECT LOCATION ─────────────────────────────────────────────
+async function autoDetectLocation() {
+  // Start GPS in background (most accurate, may be blocked on page load)
+  const gpsPromise = new Promise((resolve, reject) => {
+    navigator.geolocation.getCurrentPosition(resolve, reject, {
+      enableHighAccuracy: false,
+      timeout: 15000,
+      maximumAge: 60000,
+    });
+  });
+
+  // Fast IP-based location (works without permission, approximate)
+  try {
+    const res = await fetch('https://ipinfo.io/json');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const d = await res.json();
+    if (!d.loc) throw new Error('no data');
+    const [lat, lon] = d.loc.split(',').map(Number);
+    const place = [d.city, d.region, d.country].filter(Boolean).join(', ');
+    setCoords(lat, lon, place || undefined);
+  } catch (_) {}
+
+  // If GPS resolves, upgrade to more accurate coordinates
+  try {
+    const pos = await gpsPromise;
+    if (!userInteracted) {
+      setCoords(pos.coords.latitude, pos.coords.longitude);
+      citySearch.value = '';
+    }
+  } catch (_) {}
+}
+
+autoDetectLocation();
 
 // ── API ──────────────────────────────────────────────────────────────
 const REQUIRED_FIELDS = [
@@ -1589,11 +1622,11 @@ latInput.addEventListener('keydown', e => { if (e.key === 'Enter') fetchBtn.clic
 lonInput.addEventListener('keydown', e => { if (e.key === 'Enter') fetchBtn.click(); });
 latInput.addEventListener('blur', () => {
   const c = getManualCoords();
-  if (c) { currentLat = c.lat; currentLon = c.lon; setTimeout(syncMapMarker, 50); }
+  if (c) { userInteracted = true; currentLat = c.lat; currentLon = c.lon; setTimeout(syncMapMarker, 50); }
 });
 lonInput.addEventListener('blur', () => {
   const c = getManualCoords();
-  if (c) { currentLat = c.lat; currentLon = c.lon; setTimeout(syncMapMarker, 50); }
+  if (c) { userInteracted = true; currentLat = c.lat; currentLon = c.lon; setTimeout(syncMapMarker, 50); }
 });
 
 changeLocBtn.addEventListener('click', resetToPicker);
