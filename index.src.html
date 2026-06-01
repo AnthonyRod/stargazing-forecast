@@ -794,6 +794,7 @@ let chartInstance = null;
 let geoTimeout = null;
 let map = null, mapMarker = null;
 let userInteracted = false;
+let autoDetectCancelled = false;
 
 // ── DOM REFS ──────────────────────────────────────────────────────────
 const citySearch    = document.getElementById('citySearch');
@@ -853,7 +854,7 @@ function renderSaved() {
     el.addEventListener('click', e => {
       if (e.target.closest('.saved-loc-delete')) return;
       const s = getSaved().find(x => x.id === parseInt(el.dataset.id));
-      if (s) { setCoords(s.lat, s.lon, s.place); }
+      if (s) { autoDetectCancelled = true; locLoading.style.display = 'none'; setCoords(s.lat, s.lon, s.place); }
     });
   });
   savedLocationsList.querySelectorAll('.saved-loc-delete').forEach(btn => {
@@ -1079,12 +1080,14 @@ async function autoDetectLocation() {
   showLocLoading();
   // Yield to browser so the loading state renders before GPS/IP
   await new Promise(r => requestAnimationFrame(r));
+  if (autoDetectCancelled) { locLoading.style.display = 'none'; return; }
 
   let gpsResolved = false;
 
   // Try GPS first (accurate). Retry on transient errors.
   const gpsOpts = { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 };
   for (let attempt = 0; attempt < 3; attempt++) {
+    if (autoDetectCancelled) { locLoading.style.display = 'none'; return; }
     try {
       const pos = await new Promise((resolve, reject) => {
         navigator.geolocation.getCurrentPosition(resolve, reject, gpsOpts);
@@ -1108,7 +1111,7 @@ async function autoDetectLocation() {
   }
 
   // Fallback: IP-based location
-  if (!gpsResolved && !userInteracted) {
+  if (!gpsResolved && !userInteracted && !autoDetectCancelled) {
     try {
       const res = await fetch('https://ipinfo.io/json');
       if (!res.ok) throw new Error('HTTP ' + res.status);
