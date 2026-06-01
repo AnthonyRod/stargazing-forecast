@@ -169,32 +169,6 @@ body::before {
 .search-result-item .name { color: var(--star); }
 .search-result-item .meta { color: var(--muted); font-size: .65rem; margin-top: 2px; }
 
-.gps-btn {
-  width: 100%;
-  padding: 14px;
-  border-radius: 10px;
-  border: 1px dashed var(--border);
-  background: transparent;
-  color: var(--muted);
-  font-family: 'Outfit', sans-serif;
-  font-size: .78rem;
-  cursor: pointer;
-  transition: all .2s;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  margin-bottom: 18px;
-}
-.gps-btn:hover { border-color: var(--good); border-style: solid; color: var(--good); background: rgba(64,224,160,.04); }
-.gps-btn:disabled { opacity: .5; cursor: wait; border-style: solid; }
-.gps-btn .icon { font-size: 1rem; }
-.gps-spinner { display: none; width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--good); border-radius: 50%; animation: spin .6s linear infinite; }
-.gps-btn.loading .gps-spinner { display: inline-block; }
-.gps-btn.loading .gps-label { opacity: .6; }
-.gps-note { font-size:.62rem; color:var(--warn); letter-spacing:.03em; flex-basis:100%; margin-top:-4px; }
-
 .divider {
   display: flex;
   align-items: center;
@@ -281,6 +255,13 @@ body::before {
   text-decoration: underline;
   cursor: pointer;
 }
+.loc-source {
+  flex-basis: 100%;
+  font-size: .65rem;
+  color: var(--text);
+  text-align: center;
+  margin-top: 2px;
+}
 
 /* ── LOADING (inside overlay) ───────────────────────── */
 #loadingState {
@@ -295,6 +276,30 @@ body::before {
 .loading-fill { height:100%; background:var(--good); border-radius:2px; animation:loadpulse 1.8s ease-in-out infinite; }
 @keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
 @keyframes loadpulse { 0%{width:0%;opacity:1} 60%{width:80%;opacity:1} 100%{width:100%;opacity:0} }
+
+.location-loading {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+  padding: 20px 0;
+}
+.location-loading .loc-loading-spinner {
+  font-size: 2rem;
+  animation: spin 2s linear infinite;
+  color: var(--star);
+}
+.location-loading .loc-loading-text {
+  font-family: 'Outfit', sans-serif;
+  font-size: .75rem;
+  color: var(--text);
+  letter-spacing: .02em;
+}
+.location-loading .loc-loading-sub {
+  font-size: .6rem;
+  color: var(--muted);
+}
 
 /* ── ERROR ──────────────────────────────────────────── */
 #errorBox {
@@ -613,18 +618,18 @@ footer { margin-top:22px; padding-top:12px; border-top:1px solid var(--border); 
 
       <button class="fetch-btn" id="fetchBtn">🔭 Ver pronóstico</button>
 
-      <button class="gps-btn" id="gpsBtn">
-        <span class="icon">📍</span>
-        <span class="gps-label">Detectar ubicación por IP</span>
-        <span class="gps-spinner"></span>
-        <span class="gps-note">Basado en IP · precisión aproximada</span>
-      </button>
-
       <div class="location-error" id="locationError"></div>
+
+      <div class="location-loading" id="locLoading">
+        <div class="loc-loading-spinner">✦</div>
+        <div class="loc-loading-text">Obteniendo ubicación precisa...</div>
+        <div class="loc-loading-sub">Usando GPS &mdash; si no se obtiene, usaremos una ubicación aproximada</div>
+      </div>
 
       <div class="location-current" id="locationCurrent">
         <span>📍</span>
         <span class="coords" id="currentCoords"></span>
+        <span class="loc-source" id="locSource"></span>
         <button class="change-btn" id="changeLocBtn">✕ cambiar</button>
       </div>
     </div>
@@ -725,9 +730,10 @@ const searchResults = document.getElementById('searchResults');
 const latInput      = document.getElementById('latInput');
 const lonInput      = document.getElementById('lonInput');
 const fetchBtn      = document.getElementById('fetchBtn');
-const gpsBtn        = document.getElementById('gpsBtn');
 const locError      = document.getElementById('locationError');
 const locCurrent    = document.getElementById('locationCurrent');
+const locLoading    = document.getElementById('locLoading');
+const locSource     = document.getElementById('locSource');
 const currentCoords = document.getElementById('currentCoords');
 const changeLocBtn  = document.getElementById('changeLocBtn');
 const headerChangeLoc = document.getElementById('headerChangeLoc');
@@ -741,6 +747,18 @@ function showLocError(msg) {
 }
 function hideLocError() {
   locError.style.display = 'none';
+}
+let locLoadingStart = 0;
+function showLocLoading() {
+  locLoadingStart = Date.now();
+  locLoading.style.display = 'flex';
+}
+async function hideLocLoading() {
+  const elapsed = Date.now() - locLoadingStart;
+  if (elapsed < 800) {
+    await new Promise(r => setTimeout(r, 800 - elapsed));
+  }
+  locLoading.style.display = 'none';
 }
 
 // ── MAP ─────────────────────────────────────────────────────────────────
@@ -841,6 +859,7 @@ function setCoords(lat, lon, place) {
   lonInput.value = lon.toFixed(4);
   showCurrentCoords(lat, lon);
   hideLocError();
+  locSource.textContent = '';
   if (place) {
     citySearch.value = place;
   } else {
@@ -929,81 +948,54 @@ document.addEventListener('click', e => {
   if (!e.target.closest('.search-wrap')) closeSearch();
 });
 
-// ── GEOLOCATION ───────────────────────────────────────────────────────
-async function useGeolocation() {
-  userInteracted = true;
-  if (!navigator.geolocation) {
-    showLocError('Geolocalización no disponible. Buscá una ciudad o ingresá coordenadas.');
-    return;
-  }
-
-  gpsBtn.classList.add('loading');
-  gpsBtn.disabled = true;
-  hideLocError();
-
-  try {
-    const pos = await new Promise((resolve, reject) => {
-      navigator.geolocation.getCurrentPosition(resolve, reject, {
-        enableHighAccuracy: false,
-        timeout: 10000,
-        maximumAge: 120000,
-      });
-    });
-    setCoords(pos.coords.latitude, pos.coords.longitude);
-    citySearch.value = '';
-  } catch (err) {
-    if (err.code === 1) {
-      showLocError('Permiso de ubicación denegado. Buscá una ciudad o ingresá coordenadas.');
-    } else {
-      // GPS failed — fallback via IP
-      try {
-        const res = await fetch('https://ipinfo.io/json');
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        const d = await res.json();
-        if (!d.loc) throw new Error('no data');
-        const [lat, lon] = d.loc.split(',').map(Number);
-        const place = [d.city, d.region, d.country].filter(Boolean).join(', ');
-        setCoords(lat, lon, place || undefined);
-      } catch (_) {
-        showLocError('No se pudo obtener tu ubicación. Buscá una ciudad o ingresá coordenadas.');
-      }
-    }
-  } finally {
-    gpsBtn.classList.remove('loading');
-    gpsBtn.disabled = false;
-  }
-}
-
 // ── AUTO-DETECT LOCATION ─────────────────────────────────────────────
 async function autoDetectLocation() {
-  // Start GPS in background (most accurate, may be blocked on page load)
-  const gpsPromise = new Promise((resolve, reject) => {
-    navigator.geolocation.getCurrentPosition(resolve, reject, {
-      enableHighAccuracy: false,
-      timeout: 15000,
-      maximumAge: 60000,
-    });
-  });
+  showLocLoading();
+  // Yield to browser so the loading state renders before GPS/IP
+  await new Promise(r => requestAnimationFrame(r));
 
-  // Fast IP-based location (works without permission, approximate)
-  try {
-    const res = await fetch('https://ipinfo.io/json');
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const d = await res.json();
-    if (!d.loc) throw new Error('no data');
-    const [lat, lon] = d.loc.split(',').map(Number);
-    const place = [d.city, d.region, d.country].filter(Boolean).join(', ');
-    setCoords(lat, lon, place || undefined);
-  } catch (_) {}
+  let gpsResolved = false;
 
-  // If GPS resolves, upgrade to more accurate coordinates
-  try {
-    const pos = await gpsPromise;
-    if (!userInteracted) {
-      setCoords(pos.coords.latitude, pos.coords.longitude);
-      citySearch.value = '';
+  // Try GPS first (accurate). Retry on transient errors.
+  const gpsOpts = { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 };
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const pos = await new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, gpsOpts);
+      });
+      if (!userInteracted) {
+        setCoords(pos.coords.latitude, pos.coords.longitude);
+        citySearch.value = '';
+        gpsResolved = true;
+        locSource.textContent = '📍 Ubicación precisa (GPS)';
+      }
+      break;
+    } catch (err) {
+      // Transient location failure (kCLErrorLocationUnknown) — retry
+      if (err.code === 2 && attempt < 2) {
+        await new Promise(r => setTimeout(r, 2000));
+        continue;
+      }
+      // Permission denied, timeout, or other — bail
+      break;
     }
-  } catch (_) {}
+  }
+
+  // Fallback: IP-based location
+  if (!gpsResolved && !userInteracted) {
+    try {
+      const res = await fetch('https://ipinfo.io/json');
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const d = await res.json();
+      if (!d.loc) throw new Error('no data');
+      const [lat, lon] = d.loc.split(',').map(Number);
+      const place = [d.city, d.region, d.country].filter(Boolean).join(', ');
+      setCoords(lat, lon, place || undefined);
+      locSource.textContent = '📍 Ubicación aproximada (IP)';
+    } catch (_) {}
+  }
+
+  await hideLocLoading();
 }
 
 autoDetectLocation();
@@ -1608,7 +1600,6 @@ if (savedTheme && savedTheme !== 'dark') {
 }
 
 document.getElementById('themeBtn').addEventListener('click', toggleTheme);
-gpsBtn.addEventListener('click', useGeolocation);
 
 fetchBtn.addEventListener('click', () => {
   const c = getManualCoords();
