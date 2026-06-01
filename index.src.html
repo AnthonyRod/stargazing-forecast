@@ -262,6 +262,71 @@ body::before {
   text-align: center;
   margin-top: 2px;
 }
+.save-btn {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: .7rem;
+  cursor: pointer;
+  padding: 0 4px;
+  display: none;
+}
+.save-btn:hover { color: var(--good); }
+
+.saved-locations {
+  display: none;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.saved-locations-header {
+  font-size: .6rem;
+  color: var(--muted);
+  letter-spacing: .05em;
+  margin-bottom: 8px;
+  text-align: left;
+}
+.saved-locations-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.saved-location-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background .15s;
+  font-family: 'Outfit', sans-serif;
+  font-size: .7rem;
+  text-align: left;
+}
+.saved-location-item:hover { background: var(--surface2); }
+.saved-location-item .saved-loc-name {
+  flex: 1;
+  color: var(--star);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.saved-location-item .saved-loc-coords {
+  font-family: 'Space Mono', monospace;
+  font-size: .55rem;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.saved-location-item .saved-loc-delete {
+  background: none;
+  border: none;
+  color: var(--bad);
+  font-size: .6rem;
+  cursor: pointer;
+  padding: 2px 4px;
+  flex-shrink: 0;
+}
+.saved-location-item .saved-loc-delete:hover { opacity: .7; }
 
 /* ── LOADING (inside overlay) ───────────────────────── */
 #loadingState {
@@ -616,6 +681,11 @@ footer { margin-top:22px; padding-top:12px; border-top:1px solid var(--border); 
       <div class="divider">o elegí en el mapa</div>
       <div id="map"></div>
 
+      <div class="saved-locations" id="savedLocations">
+        <div class="saved-locations-header">📍 Ubicaciones guardadas</div>
+        <div class="saved-locations-list" id="savedLocationsList"></div>
+      </div>
+
       <button class="fetch-btn" id="fetchBtn">🔭 Ver pronóstico</button>
 
       <div class="location-error" id="locationError"></div>
@@ -630,6 +700,7 @@ footer { margin-top:22px; padding-top:12px; border-top:1px solid var(--border); 
         <span>📍</span>
         <span class="coords" id="currentCoords"></span>
         <span class="loc-source" id="locSource"></span>
+        <button class="save-btn" id="saveLocBtn">💾</button>
         <button class="change-btn" id="changeLocBtn">✕ cambiar</button>
       </div>
     </div>
@@ -739,6 +810,59 @@ const changeLocBtn  = document.getElementById('changeLocBtn');
 const headerChangeLoc = document.getElementById('headerChangeLoc');
 const retryBtn      = document.getElementById('retryBtn');
 const backBtn       = document.getElementById('backBtn');
+const saveLocBtn    = document.getElementById('saveLocBtn');
+const savedLocations = document.getElementById('savedLocations');
+const savedLocationsList = document.getElementById('savedLocationsList');
+
+const SAVED_KEY = 'stargazer-saved-locations';
+
+function getSaved() {
+  try { return JSON.parse(localStorage.getItem(SAVED_KEY)) || []; } catch { return []; }
+}
+function setSaved(arr) {
+  localStorage.setItem(SAVED_KEY, JSON.stringify(arr));
+}
+function saveCurrentLocation() {
+  const arr = getSaved();
+  if (arr.some(s => s.lat === currentLat && s.lon === currentLon)) return;
+  arr.push({
+    id: Date.now(),
+    lat: currentLat,
+    lon: currentLon,
+    place: citySearch.value || `${currentLat.toFixed(4)}° · ${currentLon.toFixed(4)}°`,
+  });
+  setSaved(arr);
+  renderSaved();
+}
+function deleteSaved(id) {
+  setSaved(getSaved().filter(s => s.id !== id));
+  renderSaved();
+}
+function renderSaved() {
+  const arr = getSaved();
+  if (arr.length === 0) { savedLocations.style.display = 'none'; return; }
+  savedLocations.style.display = 'block';
+  savedLocationsList.innerHTML = arr.map(s =>
+    `<div class="saved-location-item" data-id="${s.id}">
+      <span class="saved-loc-name">${s.place}</span>
+      <span class="saved-loc-coords">${s.lat.toFixed(4)}° · ${s.lon.toFixed(4)}°</span>
+      <button class="saved-loc-delete" data-id="${s.id}">✕</button>
+    </div>`
+  ).join('');
+  savedLocationsList.querySelectorAll('.saved-location-item').forEach(el => {
+    el.addEventListener('click', e => {
+      if (e.target.closest('.saved-loc-delete')) return;
+      const s = getSaved().find(x => x.id === parseInt(el.dataset.id));
+      if (s) { setCoords(s.lat, s.lon, s.place); }
+    });
+  });
+  savedLocationsList.querySelectorAll('.saved-loc-delete').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      deleteSaved(parseInt(btn.dataset.id));
+    });
+  });
+}
 
 // ── HELPERS ────────────────────────────────────────────────────────────
 function showLocError(msg) {
@@ -817,6 +941,7 @@ function showPicker() {
   document.getElementById('locationPicker').style.display = 'block';
   document.getElementById('loadingState').style.display = 'none';
   locCurrent.style.display = 'none';
+  saveLocBtn.style.display = 'none';
   hideLocError();
   if (currentLat != null && currentLon != null) {
     document.getElementById('latInput').value = currentLat.toFixed(4);
@@ -834,6 +959,7 @@ function showLoading() {
 function showCurrentCoords(lat, lon) {
   currentCoords.textContent = `${lat.toFixed(4)}°${lat >= 0 ? 'N' : 'S'} · ${lon.toFixed(4)}°${lon >= 0 ? 'E' : 'O'}`;
   locCurrent.style.display = 'flex';
+  saveLocBtn.style.display = 'inline';
 }
 
 async function reverseGeocode(lat, lon) {
@@ -1622,6 +1748,7 @@ lonInput.addEventListener('blur', () => {
 
 changeLocBtn.addEventListener('click', resetToPicker);
 headerChangeLoc.addEventListener('click', resetToPicker);
+saveLocBtn.addEventListener('click', saveCurrentLocation);
 backBtn.addEventListener('click', goBackToPicker);
 retryBtn.addEventListener('click', () => {
   if (currentLat !== null && currentLon !== null) {
@@ -1633,6 +1760,7 @@ retryBtn.addEventListener('click', () => {
 });
 
 showPicker();
+renderSaved();
 </script>
 </body>
 </html>
