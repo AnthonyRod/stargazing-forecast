@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stargazing Forecast</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Outfit:wght@300;400;600;800&display=swap">
+<link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+
+<div id="locationOverlay">
+  <div class="location-card" id="locationCard">
+    <div id="locationPicker">
+      <h1>✦ STARGAZING FORECAST</h1>
+      <div class="desc">Buscá una ciudad o ingresá coordenadas para obtener el pronóstico.</div>
+      <div class="desc-sub">Si permitís la geolocalización en el navegador, podés detectar tu ubicación exacta.</div>
+
+      <div class="search-wrap">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="citySearch" placeholder="Buscar ciudad…" autocomplete="off">
+        <div class="search-results" id="searchResults"></div>
+      </div>
+
+      <div class="divider">o ingresá coordenadas</div>
+
+      <div class="coord-grid">
+        <div class="coord-field">
+          <label>Latitud</label>
+          <input type="text" id="latInput" placeholder="Ej: 9.7482" inputmode="decimal">
+        </div>
+        <div class="coord-field">
+          <label>Longitud</label>
+          <input type="text" id="lonInput" placeholder="Ej: -83.9959" inputmode="decimal">
+        </div>
+      </div>
+
+      <div class="divider">o elegí en el mapa</div>
+      <div id="map"></div>
+
+      <div class="saved-locations" id="savedLocations">
+        <div class="saved-locations-header">📍 Ubicaciones guardadas</div>
+        <div class="saved-locations-list" id="savedLocationsList"></div>
+      </div>
+
+      <button class="fetch-btn" id="fetchBtn">🔭 Ver pronóstico</button>
+
+      <div class="location-error" id="locationError"></div>
+
+      <div class="location-loading" id="locLoading">
+        <div class="loc-loading-spinner">✦</div>
+        <div class="loc-loading-text">Obteniendo ubicación precisa...</div>
+        <div class="loc-loading-sub">Usando GPS &mdash; si no se obtiene, usaremos una ubicación aproximada</div>
+      </div>
+
+      <div class="location-current" id="locationCurrent">
+        <span>📍</span>
+        <span class="coords" id="currentCoords"></span>
+        <span class="loc-source" id="locSource"></span>
+        <button class="save-btn" id="saveLocBtn">💾</button>
+        <button class="change-btn" id="changeLocBtn">✕ cambiar</button>
+      </div>
+    </div>
+
+    <div id="loadingState">
+      <div class="loading-icon">✦</div>
+      <div class="loading-text">CARGANDO DATOS METEOROLÓGICOS</div>
+      <div class="loading-bar"><div class="loading-fill"></div></div>
+    </div>
+  </div>
+</div>
+
+<div id="errorBox">
+  <div class="error-card">
+    <div class="error-title">Error al obtener datos</div>
+    <div class="error-msg" id="errorMsg">No se pudo conectar con Open-Meteo.</div>
+    <button class="retry-btn" id="retryBtn">↺ Reintentar</button>
+    <button class="retry-btn" id="backBtn" style="color:var(--muted);border-color:var(--muted);margin-left:8px;">← Cambiar ubicación</button>
+  </div>
+</div>
+
+<div id="app">
+  <header>
+    <div>
+      <h1>✦ STARGAZING FORECAST</h1>
+      <div class="subtitle" id="headerSubtitle">Cargando…</div>
+      <button class="change-loc-btn" id="headerChangeLoc">← Cambiar ubicación</button>
+    </div>
+    <div class="header-right">
+      <div class="moon-widget" id="moonWidget"></div>
+      <button class="theme-btn" id="themeBtn" title="Cambiar tema">☀</button>
+      <button class="refresh-btn" id="refreshBtn" title="Actualizar datos">↻</button>
+      <div class="refresh-badge">
+        <span class="ts" id="fetchedAt">—</span>
+        Datos en vivo<br>Open-Meteo API<br>14 días
+      </div>
+    </div>
+  </header>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="astro">✦ Astro</button>
+    <button class="tab" data-tab="weather">🌤 Clima</button>
+  </div>
+
+  <div class="tab-content tab-astro active">
+    <div class="current-conditions" id="currentConditions"></div>
+
+    <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:#40e0a0"></div>Score ≥ 70 Excelente</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#f0c060"></div>45–69 Parcial</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#e05060"></div>&lt;45 Bloqueado</div>
+    <div class="legend-item" style="margin-left:auto;color:#3a4a60">▓ noche activa 18:00–05:00</div>
+  </div>
+
+  <div class="nights-filter">
+    <span class="filter-lbl">Filtrar:</span>
+    <button class="filter-btn active" data-filter="all">Todas</button>
+    <button class="filter-btn" data-filter="excellent">Solo excelentes</button>
+    <span class="filter-count" id="filterCount"></span>
+  </div>
+
+  <div class="nights-grid" id="nightsGrid"></div>
+
+  <div class="chart-section">
+    <div class="section-title">Score stargazing por hora nocturna · 14 noches</div>
+    <canvas id="mainChart" height="110"></canvas>
+  </div>
+
+  <div class="explainer" id="explainer"></div>
+  </div>
+
+  <div class="tab-content tab-weather">
+    <div class="current-conditions" id="weatherCurrent"></div>
+    <div class="section-title" style="margin-bottom:10px">Pronóstico por hora · 24 h</div>
+    <div class="hourly-weather" id="hourlyWeather"></div>
+    <div class="section-title" style="margin-top:20px;margin-bottom:10px">Pronóstico 7 días</div>
+    <div class="daily-weather" id="dailyWeather"></div>
+  </div>
+
+  <footer>
+    <span>Fuente: Open-Meteo API · <span id="footerModel">best_match</span> · 14 días · se actualiza en cada recarga</span>
+    <span id="footerDate"></span>
+  </footer>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="./app.js"></script>
+</body>
+</html>

@@ -2,11 +2,15 @@
   "name": "stargazing-forecast",
   "version": "1.0.0",
   "description": "Stargazing forecast web app",
+  "type": "module",
   "scripts": {
-    "build": "html-minifier-terser --collapse-whitespace --remove-comments --minify-css true --minify-js true index.src.html -o index.html",
-    "start": "npx serve . -s -l $PORT"
+    "build": "esbuild src/js/main.js --bundle --minify --sourcemap --outfile=dist/app.js && esbuild src/styles.css --bundle --minify --outfile=dist/styles.css && html-minifier-terser --collapse-whitespace --remove-comments src/index.html -o dist/index.html",
+    "dev": "esbuild src/js/main.js --bundle --sourcemap --outfile=dist/app.js --watch=forever",
+    "test": "node --test",
+    "start": "node server.mjs"
   },
   "devDependencies": {
+    "esbuild": "^0.24.0",
     "html-minifier-terser": "^7.2.0"
   }
 }

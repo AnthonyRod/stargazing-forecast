@@ -2,6 +2,7 @@ node_modules
 .DS_Store
 *.log
 .env
+.meteoblue_api_key
 *.pdf
 dist
-index.html
+/index.html
