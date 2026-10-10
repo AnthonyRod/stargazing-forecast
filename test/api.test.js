@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   REQUIRED_FIELDS, WEATHER_FIELDS, FALLBACK_MODELS,
   buildApiUrl, missingFields, fetchForecast, applyMeteobluePrecip, meteoblueLabel,
+  calibrateRain,
 } from '../src/js/api.js';
 
 // ── helpers ───────────────────────────────────────────────────────────
@@ -442,4 +443,99 @@ test('fetchForecast: si meteoblue falla, igual devuelve el pronóstico Open-Mete
   const out = await fetchForecast(9.75, -83.99);
   assert.equal(out._model, 'Mejor disponible'); // sin fusión, pero con datos
   assert.ok(urls.some(u => u.startsWith('/api/meteoblue')));
+});
+
+// ── calibrateRain: corrección de lluvia días 8–14 ────────────────────
+const pair = (omPp, mbPp, omP = null, mbP = null) => ({ omPp, mbPp, omP, mbP });
+const dryPairs = n => Array.from({ length: n }, () => pair(30, 45));
+const wetPair  = (omP, mbP) => pair(null, null, omP, mbP);
+
+test('calibrateRain: recupera el sesgo aditivo de probabilidad', () => {
+  const out = calibrateRain(dryPairs(120));
+  assert.equal(out.ppApplied, true);
+  assert.equal(out.ppBias, 15);
+  assert.equal(out.amountApplied, false); // sin horas de cantidad
+});
+
+test('calibrateRain: sin solape suficiente no aplica probabilidad', () => {
+  const out = calibrateRain(dryPairs(99));
+  assert.equal(out.ppApplied, false);
+  assert.equal(out.ppBias, 0);
+});
+
+test('calibrateRain: factor de cantidad = razón de intensidades en horas húmedas', () => {
+  const pairs = [
+    ...Array.from({ length: 24 }, () => wetPair(1, 3)),
+    ...Array.from({ length: 120 }, () => wetPair(0, 0)),
+  ];
+  const out = calibrateRain(pairs);
+  assert.equal(out.amountApplied, true);
+  assert.equal(out.wetThreshold, 0.1);
+  assert.equal(out.amountFactor, 3);
+});
+
+test('calibrateRain: factor de cantidad topado en 4', () => {
+  const pairs = [
+    ...Array.from({ length: 24 }, () => wetPair(1, 100)),
+    ...Array.from({ length: 120 }, () => wetPair(0, 0)),
+  ];
+  assert.equal(calibrateRain(pairs).amountFactor, 4);
+});
+
+test('calibrateRain: menos de 12 horas húmedas => sin factor', () => {
+  const pairs = [
+    ...Array.from({ length: 5 }, () => wetPair(1, 3)),
+    ...Array.from({ length: 139 }, () => wetPair(0, 0)),
+  ];
+  assert.equal(calibrateRain(pairs).amountApplied, false);
+});
+
+test('calibrateRain: semana de meteoblue seco => solo anula lloviznas traza', () => {
+  const pairs = [
+    ...Array.from({ length: 48 }, () => wetPair(1, 0)),
+    ...Array.from({ length: 120 }, () => wetPair(0.05, 0)),
+  ];
+  const out = calibrateRain(pairs);
+  assert.equal(out.amountApplied, true);
+  assert.equal(out.wetThreshold, 0.2);
+  assert.equal(out.amountFactor, 1);
+});
+
+test('applyMeteobluePrecip: corrige probabilidad en horas futuras (días 8–14)', async t => {
+  const data = makeForecastFixture({ hours: 192 });
+  data.hourly.precipitation_probability = Array(192).fill(30);
+  data.hourly.precipitation = Array(192).fill(0);
+
+  // meteoblue cubre las primeras 168 h; mbP=null para aislar la probabilidad
+  mockFetch(t, () => jsonResponse({
+    available: true,
+    times: mbTimes(data).slice(0, 168),
+    precipitation: Array(168).fill(null),
+    precipitation_probability: Array(168).fill(45),
+  }));
+
+  await applyMeteobluePrecip(9.75, -83.99, data);
+
+  assert.equal(data.hourly.precipitation_probability[167], 45); // solape: valor mb
+  assert.equal(data.hourly.precipitation_probability[168], 45); // futuro: 30 + 15
+  assert.equal(data.hourly.precipitation_probability[191], 45);
+  assert.equal(data._calib, 'partial');
+  assert.equal(data.daily.precipitation_sum[7], 0); // día 8 recalculado (0 mm)
+});
+
+test('applyMeteobluePrecip: sin solape suficiente _calib=off y futuro intacto', async t => {
+  const data = makeForecastFixture({ hours: 48 });
+  data.hourly.precipitation_probability = Array(48).fill(30);
+
+  mockFetch(t, () => jsonResponse({
+    available: true,
+    times: mbTimes(data).slice(0, 24),
+    precipitation: Array(24).fill(null),
+    precipitation_probability: Array(24).fill(45),
+  }));
+
+  await applyMeteobluePrecip(9.75, -83.99, data);
+
+  assert.equal(data.hourly.precipitation_probability[24], 30); // sin corrección
+  assert.equal(data._calib, 'off');
 });

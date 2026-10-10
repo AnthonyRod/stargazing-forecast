@@ -34,6 +34,9 @@ export function renderForecast(data, lat, lon) {
     new Date().toLocaleTimeString('es-CR', { hour:'2-digit', minute:'2-digit' });
   const modelEl = document.getElementById('footerModel');
   modelEl.textContent = data._model || 'best_match';
+  if (data._calib === 'applied' || data._calib === 'partial') {
+    modelEl.textContent += ' · corr. lluvia 8–14d';
+  }
   if (data._meteoblue && data._meteoblue !== 'active') {
     modelEl.textContent += ` · sin meteoblue (${meteoblueLabel(data._meteoblue)})`;
     modelEl.title = `Fusión de lluvia inactiva: ${data._meteoblue}`;

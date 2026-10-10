@@ -106,7 +106,7 @@ Navegador (SPA)
 
 - **Alineación temporal**: el cliente le pasa a meteoblue la misma zona horaria que devuelve Open-Meteo (`timezone auto`, p. ej. `America/Costa_Rica`), por lo que ambas series horarias comparten etiquetas locales idénticas (`2026-10-09T18:00`). No hay desplazamientos UTC que corregir.
 - **Fusión por marca de tiempo**: se construye un mapa `hora → {precipitación, probabilidad}` y se aplica donde la hora coincida exactamente (primeros 7 días, 168 horas).
-- **Fallback silencioso**: si el proxy devuelve `{available:false}` (sin clave, red caída, error) o falla el `fetch`, la app continúa con los datos de Open-Meteo sin romperse. El estado de la fusión se refleja en el footer: con clave OK muestra `IFS + meteoblue (lluvia)`; si está inactiva muestra `· sin meteoblue (motivo)`.
+- **Fallback silencioso**: si el proxy devuelve `{available:false}` (sin clave, red caída, error) o falla el `fetch`, la app continúa con los datos de Open-Meteo sin romperse. El estado de la fusión se refleja en el footer: con clave OK muestra `IFS + meteoblue (lluvia)`; si está inactiva muestra `· sin meteoblue (motivo)`. Cuando la corrección de lluvia 8–14d está activa, el footer añade `· corr. lluvia 8–14d`.
 
 ## Arquitectura técnica
 
@@ -139,6 +139,24 @@ Existen **dos capas independientes** de fallback:
 - Qué se reemplaza: solo `precipitation` (mm) y `precipitation_probability` (%) para horas ≤ 7 días. Nubosidad, humedad, viento y visibilidad siguen viniendo de IFS para no perder resolución horaria.
 - Dónde: `applyMeteobluePrecip()` en `src/js/api.js`, invocado desde `fetchForecast()` tras obtener los datos de Open-Meteo.
 
+### Corrección estimada de lluvia (días 8–14)
+
+meteoblue solo entrega lluvia horaria hasta 7 días [5], así que los días 8–14 no tienen referencia directa. En su lugar se aplica una **corrección de sesgo**: las ~168 horas de solape (días 0–6, con dato de ambas fuentes) sirven de muestra pareada para medir cómo se desvía Open-Meteo de meteoblue en *ese lugar y ese régimen*, y esa desviación se aplica a los días 8–14.
+
+- **Probabilidad → desplazamiento aditivo**: `pp_corr = clamp(pp_OM + bias, 0, 100)`, con `bias = media(mb − om)` sobre el solape (mínimo 100 horas coincidentes). Las variables acotadas se corrigen por desplazamiento, igual que la temperatura en las guías estándar [2].
+- **Cantidad (mm) → LOCI simplificado** [1]: (1) se iguala la frecuencia de horas húmedas (> 0,1 mm) con un umbral `T_om` sobre Open-Meteo; (2) solo los valores sobre el umbral se escalan por `factor = media(mb|húmedo) / media(om|>T_om)`. Así se corrige el "drizzle" típico de los modelos (llueve demasiado seguido y demasiado liviano) sin inventar eventos.
+- **Topes conservadores**: `factor ∈ [0,25, 4]` y se exige ≥ 12 horas húmedas por lado; por debajo, la cantidad queda sin corregir. Topar el factor es práctica estándar (ISI-MIP topa su μ en 10 con 40 años de muestra [3]); el nuestro es mucho más estrecho porque la muestra es de ~168 horas. Si meteoblue estuvo seco toda la semana, solo se anulan lloviznas traza (≤ 0,2 mm), nunca se borra todo.
+- **Etiqueta**: cuando la corrección está activa el footer añade `· corr. lluvia 8–14d`. Sin solape suficiente o sin meteoblue, los días 8–14 quedan con Open-Meteo puro y sin etiqueta.
+- **Límite honesto**: el sesgo aprendido describe el régimen actual; la deriva del modelo crece con el plazo, así que esto es "menos equivocado", no "correcto". Ver `calibrateRain()` en `src/js/api.js` (función pura, con tests).
+
+**Referencias rápidas**
+
+1. Método LOCI (Schmidli et al. 2006; revisado en Teutschbein & Seibert 2012) — igualación de frecuencia por umbral + escalado de intensidad solo en horas húmedas: <https://hess.copernicus.org/preprints/11/12659/2014/hessd-11-12659-2014.pdf> (§3.2.2) y <https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2021EA001981>
+2. Met Office UKCP18, *How to Bias Correct* (Fung 2018) — ajuste aditivo para variables tipo temperatura, relativo (multiplicativo) para precipitación: <https://www.metoffice.gov.uk/binaries/content/assets/metofficegovuk/pdf/research/ukcp/ukcp18-guidance---how-to-bias-correct.pdf>
+3. ISI-MIP, *Fact Sheet: Bias Correction* (Hempel et al.) — precipitación con corrección multiplicativa y factor μ topado en 10: <https://www.isimip.org/documents/16/Fact_Sheet_Bias_Correction.pdf>
+4. Lange (2019), ISIMIP3BASD — la precipitación se ajusta multiplicativamente: <https://gmd.copernicus.org/articles/12/3055/2019>
+5. meteoblue, Forecast API Configurator — la API de pronóstico entrega hasta 7 días (motivo por el que 8–14 se estima): <https://docs.meteoblue.com/en/weather-apis/forecast-api/forecast-api-configurator>
+
 ### Geolocalización
 
 1. `navigator.geolocation.getCurrentPosition` (precisión baja, `enableHighAccuracy: false`)
@@ -163,7 +181,7 @@ Al elegir una ubicación se hace reverse geocoding (Nominatim) para mostrar la d
 - **Refrescar datos**: botón ↻ en el header.
 - **Cambiar ubicación**: botón ← para volver al selector.
 - **Pestañas**: "Astro" y "Tiempo" (condiciones actuales, hora por hora: 8 h pasadas + 24 h próximas con la hora actual destacada y autoscroll a AHORA, y diario Ayer + 14 días).
-- **Fuente de datos**: el footer indica el modelo y si la fusión meteoblue está activa (`IFS + meteoblue (lluvia)`) o en fallback (`· sin meteoblue (motivo)`).
+- **Fuente de datos**: el footer indica el modelo y si la fusión meteoblue está activa (`IFS + meteoblue (lluvia)`) o en fallback (`· sin meteoblue (motivo)`), y añade `· corr. lluvia 8–14d` cuando la corrección estimada de los días 8–14 está activa.
 
 ### Filtros
 

@@ -98,6 +98,54 @@ export function meteoblueLabel(code) {
   return 'no disponible';
 }
 
+// Parámetros de la corrección de lluvia para los días 8–14 (donde meteoblue no
+// llega). El sesgo se aprende del solape de ~168 h con meteoblue y se aplica
+// hacia adelante. Topes conservadores porque la muestra es corta (~7 días).
+export const CALIB = {
+  MIN_OVERLAP: 100,   // horas coincidentes mínimas para el sesgo de probabilidad
+  MIN_WET:     12,    // horas húmedas mínimas por lado para el factor de cantidad
+  WET_MM:      0.1,   // umbral de "hora húmeda" (LOCI)
+  TRACE_MM:    0.2,   // llovizna traza que se anula si meteoblue estuvo seco
+  FACTOR_MIN:  0.25,  // clamp del factor de cantidad (ver README: refs)
+  FACTOR_MAX:  4
+};
+
+// Corrección de sesgo (LOCI simplificado). Recibe los pares del solape
+// {omP, mbP, omPp, mbPp} y devuelve cómo corregir las horas futuras.
+// Pura y testeable. pp = probabilidad (%), P = cantidad (mm).
+export function calibrateRain(pairs) {
+  const out = { ppBias: 0, wetThreshold: CALIB.WET_MM, amountFactor: 1, ppApplied: false, amountApplied: false };
+
+  const pp = pairs.filter(p => p.omPp != null && p.mbPp != null);
+  if (pp.length >= CALIB.MIN_OVERLAP) {
+    out.ppBias = pp.reduce((a, p) => a + (p.mbPp - p.omPp), 0) / pp.length;
+    out.ppApplied = true;
+  }
+
+  const wet   = pairs.filter(p => p.omP != null && p.mbP != null);
+  const mbWet = wet.filter(p => p.mbP > CALIB.WET_MM);
+  const omWet = wet.filter(p => p.omP > CALIB.WET_MM);
+
+  if (mbWet.length === 0 && wet.length >= CALIB.MIN_OVERLAP) {
+    // meteoblue seco: solo anular lloviznas traza, nunca borrar todo.
+    out.wetThreshold = CALIB.TRACE_MM;
+    out.amountApplied = true;
+  } else if (mbWet.length >= CALIB.MIN_WET && omWet.length >= CALIB.MIN_WET) {
+    const sorted = wet.map(p => p.omP).sort((a, b) => a - b);
+    const tidx   = sorted.length - mbWet.length - 1;
+    const T      = Math.min(2, Math.max(CALIB.WET_MM, sorted[tidx] ?? CALIB.WET_MM));
+    const meanMb = mbWet.reduce((a, p) => a + p.mbP, 0) / mbWet.length;
+    const above  = wet.filter(p => p.omP > T);
+    const meanOm = above.reduce((a, p) => a + p.omP, 0) / (above.length || 1);
+    if (meanOm > 0) {
+      out.wetThreshold = T;
+      out.amountFactor = Math.min(CALIB.FACTOR_MAX, Math.max(CALIB.FACTOR_MIN, meanMb / meanOm));
+      out.amountApplied = true;
+    }
+  }
+  return out;
+}
+
 // meteoblue aporta precipitación horaria (0–7 días) con ajuste de terreno (mLM).
 // Se fusiona con los datos de Open-Meteo por marca de tiempo exacta; si falla o no
 // hay clave configurada en el prox., se deja intacto el dato de Open-Meteo.
@@ -121,20 +169,45 @@ export async function applyMeteobluePrecip(lat, lon, data) {
   }
 
   const H = data.hourly;
-  let overlaid = 0;
+  const origP  = H.precipitation.slice();
+  const origPp = H.precipitation_probability.slice();
+  const pairs = [], overlaid = new Set();
+  let lastOverlaid = -1;
   for (let i = 0; i < H.time.length; i++) {
     const e = byKey.get(H.time[i].slice(0, 16));
     if (!e) continue;
+    overlaid.add(i);
+    lastOverlaid = i;
+    pairs.push({ omP: origP[i] ?? null, mbP: e.p ?? null, omPp: origPp[i] ?? null, mbPp: e.pp ?? null });
     if (e.p  != null) H.precipitation[i]              = e.p;
     if (e.pp != null) H.precipitation_probability[i]  = e.pp;
-    overlaid++;
   }
-  if (!overlaid) { data._meteoblue = 'no_match'; return; }
+  if (!overlaid.size) { data._meteoblue = 'no_match'; return; }
 
-  // Los totales diarios de días 0–6 se recalculan desde las horas fusionadas.
+  // Días 8–14: sin dato de meteoblue, se corrigen con el sesgo aprendido del solape.
+  const cal = calibrateRain(pairs);
+  let corrected = 0;
+  if ((cal.ppApplied || cal.amountApplied) && lastOverlaid >= 0) {
+    for (let i = lastOverlaid + 1; i < H.time.length; i++) {
+      if (overlaid.has(i)) continue;
+      if (cal.ppApplied && H.precipitation_probability[i] != null) {
+        H.precipitation_probability[i] = Math.max(0, Math.min(100, Math.round(H.precipitation_probability[i] + cal.ppBias)));
+      }
+      if (cal.amountApplied && H.precipitation[i] != null) {
+        const p = H.precipitation[i];
+        H.precipitation[i] = p <= cal.wetThreshold ? 0 : Math.round(p * cal.amountFactor * 10) / 10;
+      }
+      corrected++;
+    }
+  }
+  data._calib = corrected
+    ? (cal.ppApplied && cal.amountApplied ? 'applied' : 'partial')
+    : 'off';
+
+  // Los totales diarios se recalculan desde las horas fusionadas/corregidas.
   // Se usa la fecha de cada entrada diaria (ayer es el índice 0 con past_days).
   if (Array.isArray(data.daily?.time)) {
-    for (let di = 0; di < Math.min(7, data.daily.time.length); di++) {
+    for (let di = 0; di < data.daily.time.length; di++) {
       const day  = data.daily.time[di];
       let sum = 0, count = 0;
       for (let i = 0; i < H.time.length; i++) {
@@ -146,5 +219,5 @@ export async function applyMeteobluePrecip(lat, lon, data) {
 
   data._model = 'IFS + meteoblue (lluvia)';
   data._meteoblue = 'active';
-  console.info(`meteoblue: ${overlaid} horas de precipitación aplicadas`);
+  console.info(`meteoblue: ${overlaid.size} horas de precipitación aplicadas · corrección 8–14d: ${data._calib}`);
 }
