@@ -1,4 +1,5 @@
 import { S } from './state.js';
+import { PAST_DAYS } from './api.js';
 import { scoreHour, scoreColor, verdict } from './scoring.js';
 import { addDays, fmtDate, moonPhase, getNightSlots, bestWindow } from './utils.js';
 
@@ -12,7 +13,11 @@ export function renderForecast(data, lat, lon) {
               H.relative_humidity_2m?.[i], H.visibility?.[i], H.wind_speed_10m?.[i])
   );
 
-  const today = timeArr[0].slice(0, 10);
+  // Los datos horarios empiezan PAST_DAYS días atrás (ayer); las 14 noches
+  // de Astro parten de hoy. Si el modelo no devolvió días pasados, se usa
+  // el primer día tal como antes.
+  const hasPast = timeArr.length >= (14 + PAST_DAYS) * 24;
+  const today = hasPast ? addDays(timeArr[0].slice(0, 10), PAST_DAYS) : timeArr[0].slice(0, 10);
   const dates = Array.from({ length: 14 }, (_, i) => addDays(today, i));
   const moon  = moonPhase(today);
 

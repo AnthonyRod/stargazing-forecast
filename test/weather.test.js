@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { wmoIcon, skyText, skyIcon, WMO } from '../src/js/weather.js';
+import { wmoIcon, skyText, skyIcon, dayLabel, WMO } from '../src/js/weather.js';
 
 test('wmoIcon: código desconocido', () => {
   assert.deepEqual(wmoIcon(9999, 12), { i: '❓', t: 'Desconocido' });
@@ -51,4 +51,16 @@ test('skyIcon: variantes día/noche y umbrales', () => {
   assert.equal(skyIcon(40, 22), '🌙☁️');
   assert.equal(skyIcon(80, 12), '☁️');
   assert.equal(skyIcon(80, 5), '☁️'); // nublado ignora día/noche
+});
+
+test('dayLabel: Ayer / Hoy / Mañana relativos a la fecha', () => {
+  assert.equal(dayLabel('2026-10-08', '2026-10-09'), 'Ayer');
+  assert.equal(dayLabel('2026-10-09', '2026-10-09'), 'Hoy');
+  assert.equal(dayLabel('2026-10-10', '2026-10-09'), 'Mañana');
+});
+
+test('dayLabel: resto de días => nombre del día de semana', () => {
+  assert.equal(dayLabel('2026-10-11', '2026-10-09'), 'Domingo');
+  assert.equal(dayLabel('2026-10-12', '2026-10-09'), 'Lunes');
+  assert.equal(dayLabel('2026-10-05', '2026-10-09'), 'Lunes'); // pasado lejano también
 });

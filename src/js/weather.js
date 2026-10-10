@@ -1,4 +1,6 @@
 // ── WEATHER TAB ────────────────────────────────────────────────────────
+import { addDays } from './utils.js';
+
 export const WMO = {
   0:{i:'☀️',t:'Despejado'},1:{i:'🌤️',t:'Mayormente despejado'},2:{i:'⛅',t:'Parcial nublado'},3:{i:'☁️',t:'Nublado'},
   45:{i:'🌫️',t:'Niebla'},48:{i:'🌫️',t:'Niebla'},
@@ -39,6 +41,16 @@ export function skyIcon(cloud, hour) {
   return '☁️';
 }
 
+// Etiqueta de tarjeta diaria relativa a hoy (función pura, testeable).
+// todayStr: fecha local actual 'YYYY-MM-DD'.
+export function dayLabel(date, todayStr) {
+  if (date === todayStr) return 'Hoy';
+  if (date === addDays(todayStr, 1)) return 'Mañana';
+  if (date === addDays(todayStr, -1)) return 'Ayer';
+  return ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'][
+    new Date(date + 'T12:00:00Z').getUTCDay()];
+}
+
 export function renderWeather(data) {
   const H = data.hourly;
   const D = data.daily;
@@ -49,6 +61,8 @@ export function renderWeather(data) {
   const localNow = new Date(now.getTime() + offsetMs);
   const localStr = localNow.toISOString().slice(0, 13) + ':00';
   const localHour = localNow.getUTCHours();
+  const todayStr = localNow.toISOString().slice(0, 10);
+  const yesterdayStr = addDays(todayStr, -1);
 
   let nowIdx = -1;
   for (let i = 0; i < H.time.length; i++) {
@@ -84,18 +98,23 @@ export function renderWeather(data) {
       <span>🌡️ ${H.apparent_temperature?.[nowIdx] != null ? Math.round(H.apparent_temperature[nowIdx]) + '°' : '—'}</span>
     </div>`;
 
-  // ── 24h forecast ──
-  const slots24 = [];
-  for (let i = nowIdx; i < H.time.length && slots24.length < 24; i++) {
+  // ── Ayer 12:00 → hoy (36 h): pasado atenuado, hora actual destacada ──
+  let startIdx = H.time.indexOf(`${yesterdayStr}T12:00`);
+  if (startIdx < 0) startIdx = nowIdx; // sin datos pasados: próximas 24 h
+  const slots36 = [];
+  for (let i = startIdx; i < H.time.length && slots36.length < 36 && H.time[i].slice(0, 10) <= todayStr; i++) {
     const h = parseInt(H.time[i].slice(11, 13));
     const wc = wmoIcon(H.weather_code?.[i] ?? 0, h);
-    slots24.push({ hour:h, temp:H.temperature_2m?.[i], feels:H.apparent_temperature?.[i],
-      precip:H.precipitation?.[i], wind:H.wind_speed_10m?.[i], icon:wc.i, code:H.weather_code?.[i] });
+    slots36.push({ hour:h, day:H.time[i].slice(0, 10),
+      prev:i < nowIdx, now:i === nowIdx,
+      temp:H.temperature_2m?.[i], feels:H.apparent_temperature?.[i],
+      precip:H.precipitation?.[i], wind:H.wind_speed_10m?.[i], icon:wc.i });
   }
 
-  document.getElementById('hourlyWeather').innerHTML = slots24.map(s => `
-    <div class="w-card">
-      <div class="hour">${String(s.hour).padStart(2,'0')}:00</div>
+  document.getElementById('hourlyWeather').innerHTML = slots36.map(s => `
+    <div class="w-card${s.now ? ' now' : s.prev ? ' prev' : ''}">
+      ${s.now ? '<div class="now-tag">AHORA</div>' : ''}
+      <div class="hour">${s.day === yesterdayStr ? 'Ayer ' : ''}${String(s.hour).padStart(2,'0')}:00</div>
       <div class="icon">${s.icon}</div>
       <div class="temp">${s.temp != null ? Math.round(s.temp) + '°' : '—'}</div>
       <div class="feels">${s.feels != null ? Math.round(s.feels) + '°' : ''}</div>
@@ -103,15 +122,11 @@ export function renderWeather(data) {
       <div class="wind">${s.wind != null ? s.wind.toFixed(0) + 'km/h' : ''}</div>
     </div>`).join('');
 
-  // ── 7-day forecast ──
-  const days = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
-
+  // ── Ayer + 14 días ──
   document.getElementById('dailyWeather').innerHTML = D.time.map((date, i) => {
     const dw = wmoIcon(D.weather_code?.[i] ?? 0);
-    const dt = new Date(date + 'T12:00:00Z');
-    const dayLabel = i === 0 ? 'Hoy' : i === 1 ? 'Mañana' : days[dt.getUTCDay()];
     return `<div class="d-card">
-      <div class="day">${dayLabel}</div>
+      <div class="day">${dayLabel(date, todayStr)}</div>
       <div class="icon">${dw.i}</div>
       <div class="temps">
         <span class="hi">${D.temperature_2m_max?.[i] != null ? Math.round(D.temperature_2m_max[i]) + '°' : '—'}</span>

@@ -1,4 +1,6 @@
-import { addDays } from './utils.js';
+// Días pasados incluidos en la respuesta de Open-Meteo (la pestaña Clima
+// muestra "ayer"; Astro sigue partiendo de hoy ignorando este día extra).
+export const PAST_DAYS = 1;
 
 // ── API ──────────────────────────────────────────────────────────────
 export const REQUIRED_FIELDS = [
@@ -22,7 +24,7 @@ export function buildApiUrl(lat, lon, model) {
     + `?latitude=${lat}&longitude=${lon}`
     + `&hourly=${REQUIRED_FIELDS.join(',')},${WEATHER_FIELDS.join(',')}`
     + `&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,weather_code,wind_speed_10m_max,uv_index_max`
-    + `&models=${model}&forecast_days=14&timezone=auto`;
+    + `&models=${model}&forecast_days=14&past_days=${PAST_DAYS}&timezone=auto`;
 }
 
 export function missingFields(hourly) {
@@ -111,10 +113,10 @@ export async function applyMeteobluePrecip(lat, lon, data) {
   if (!overlaid) return;
 
   // Los totales diarios de días 0–6 se recalculan desde las horas fusionadas.
+  // Se usa la fecha de cada entrada diaria (ayer es el índice 0 con past_days).
   if (Array.isArray(data.daily?.time)) {
-    const today = H.time[0]?.slice(0, 10);
     for (let di = 0; di < Math.min(7, data.daily.time.length); di++) {
-      const day  = addDays(today, di);
+      const day  = data.daily.time[di];
       let sum = 0, count = 0;
       for (let i = 0; i < H.time.length; i++) {
         if (H.time[i].startsWith(day)) { sum += H.precipitation[i] || 0; count++; }

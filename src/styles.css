@@ -596,6 +596,9 @@ h1 { font-family:'Outfit',sans-serif; font-weight:800; font-size:clamp(1.2rem,3v
 .w-card .feels { font-size:.5rem; color:var(--muted); margin-top:1px; }
 .w-card .precip { font-size:.55rem; color:var(--good); margin-top:2px; }
 .w-card .wind { font-size:.5rem; color:var(--muted); margin-top:1px; }
+.w-card.prev { opacity:.55; }
+.w-card.now { border-color:var(--good); box-shadow:0 0 0 1px var(--good); }
+.w-card .now-tag { font-size:.5rem; font-weight:700; color:var(--good); margin-bottom:2px; }
 
 .daily-weather {
   display:grid; gap:6px;

@@ -6,26 +6,28 @@ import {
 } from '../src/js/api.js';
 
 // ── helpers ───────────────────────────────────────────────────────────
-const dayStr = offset => {
-  const d = new Date('2026-10-09T00:00:00Z');
+const dayStrFrom = (base, offset) => {
+  const d = new Date(base + 'T00:00:00Z');
   d.setUTCDate(d.getUTCDate() + offset);
   return d.toISOString().slice(0, 10);
 };
+const dayStr = offset => dayStrFrom('2026-10-09', offset);
 
 const jsonResponse = (body, { ok = true, status = 200 } = {}) => ({
   ok, status,
   json: async () => body,
 });
 
-function makeForecastFixture({ hours = 48 } = {}) {
+function makeForecastFixture({ hours = 48, start = '2026-10-09T00:00:00Z' } = {}) {
   const time = [];
-  let d = new Date('2026-10-09T00:00:00Z');
+  let d = new Date(start);
   for (let i = 0; i < hours; i++) {
     time.push(d.toISOString().slice(0, 16));
     d = new Date(d.getTime() + 3600e3);
   }
   const fill = v => Array.from({ length: hours }, () => v);
   const days = Math.max(Math.ceil(hours / 24), 1);
+  const startDay = time[0].slice(0, 10);
   return {
     timezone: 'America/Costa_Rica',
     utc_offset_seconds: -21600,
@@ -45,7 +47,7 @@ function makeForecastFixture({ hours = 48 } = {}) {
       weather_code: fill(1),
     },
     daily: {
-      time: Array.from({ length: days }, (_, i) => dayStr(i)),
+      time: Array.from({ length: days }, (_, i) => dayStrFrom(startDay, i)),
       temperature_2m_max: Array(days).fill(28),
       temperature_2m_min: Array(days).fill(20),
       precipitation_sum: Array(days).fill(99),
@@ -65,7 +67,7 @@ function mockFetch(t, handler) {
 // ── buildApiUrl / missingFields ───────────────────────────────────────
 test('buildApiUrl: incluye parámetros, modelos y campos', () => {
   const url = buildApiUrl(9.75, -83.99, 'best_match');
-  for (const p of ['latitude=9.75', 'longitude=-83.99', 'models=best_match', 'forecast_days=14', 'timezone=auto', '&hourly=', '&daily=']) {
+  for (const p of ['latitude=9.75', 'longitude=-83.99', 'models=best_match', 'forecast_days=14', 'past_days=1', 'timezone=auto', '&hourly=', '&daily=']) {
     assert.ok(url.includes(p), `falta ${p}`);
   }
   for (const f of [...REQUIRED_FIELDS, ...WEATHER_FIELDS]) {
@@ -139,6 +141,33 @@ test('applyMeteobluePrecip: recalcula precipitation_sum de días con >=20 h', as
   assert.equal(data.daily.precipitation_sum[1], 24);
   assert.equal(data.daily.precipitation_sum[2], 99); // sin horas => intacto
   assert.equal(data.daily.precipitation_sum[6], 99);
+});
+
+test('applyMeteobluePrecip: con día pasado, ayer queda intacto y hoy se fusiona', async t => {
+  const data = makeForecastFixture({ hours: 72, start: '2026-10-08T00:00:00Z' });
+  data.daily.time = Array.from({ length: 7 }, (_, i) => dayStrFrom('2026-10-08', i));
+  data.daily.precipitation_sum = Array(7).fill(99);
+  data.hourly.precipitation = Array(72).fill(0);
+
+  // meteoblue solo cubre desde hoy (índices 24–71)
+  mockFetch(t, () => jsonResponse({
+    available: true,
+    times: data.hourly.time.slice(24).map(s => s.replace('T', ' ')),
+    precipitation: Array(48).fill(2),
+    precipitation_probability: Array(48).fill(70),
+  }));
+
+  await applyMeteobluePrecip(9.75, -83.99, data);
+
+  assert.equal(data.hourly.precipitation[0], 0);    // ayer: sin overlay
+  assert.equal(data.hourly.precipitation[23], 0);
+  assert.equal(data.hourly.precipitation[24], 2);   // hoy 00:00: fusionado
+  assert.equal(data.hourly.precipitation_probability[0], 20); // prob. base intacta
+  // totales alineados por daily.time: [0]=ayer (solo Open-Meteo), [1]=hoy
+  assert.equal(data.daily.precipitation_sum[0], 0);
+  assert.equal(data.daily.precipitation_sum[1], 48);
+  assert.equal(data.daily.precipitation_sum[3], 99); // sin horas => intacto
+  assert.equal(data._model, 'IFS + meteoblue (lluvia)');
 });
 
 test('applyMeteobluePrecip: no recalcula días con menos de 20 horas', async t => {
