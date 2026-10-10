@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { wmoIcon, skyText, skyIcon, dayLabel, WMO } from '../src/js/weather.js';
+import { wmoIcon, skyText, skyIcon, dayLabel, hourlyWindowBounds, WMO } from '../src/js/weather.js';
 
 test('wmoIcon: código desconocido', () => {
   assert.deepEqual(wmoIcon(9999, 12), { i: '❓', t: 'Desconocido' });
@@ -63,4 +63,22 @@ test('dayLabel: resto de días => nombre del día de semana', () => {
   assert.equal(dayLabel('2026-10-11', '2026-10-09'), 'Domingo');
   assert.equal(dayLabel('2026-10-12', '2026-10-09'), 'Lunes');
   assert.equal(dayLabel('2026-10-05', '2026-10-09'), 'Lunes'); // pasado lejano también
+});
+
+test('hourlyWindowBounds: 8 pasadas + 24 desde ahora (incl. ahora)', () => {
+  assert.deepEqual(hourlyWindowBounds(100, 360), [92, 124]);
+  const [s, e] = hourlyWindowBounds(100, 360);
+  assert.equal(e - s, 32);
+});
+
+test('hourlyWindowBounds: clamp al inicio cuando nowIdx < 8', () => {
+  assert.deepEqual(hourlyWindowBounds(3, 360), [0, 27]);
+});
+
+test('hourlyWindowBounds: clamp al final cerca del fin del array', () => {
+  assert.deepEqual(hourlyWindowBounds(350, 360), [342, 360]);
+});
+
+test('hourlyWindowBounds: respeta parámetros before/after personalizados', () => {
+  assert.deepEqual(hourlyWindowBounds(50, 360, 12, 36), [38, 86]);
 });

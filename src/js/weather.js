@@ -51,6 +51,24 @@ export function dayLabel(date, todayStr) {
     new Date(date + 'T12:00:00Z').getUTCDay()];
 }
 
+// Ventana horaria anclada a ahora: `before` horas pasadas + `after` horas
+// desde ahora (incl. ahora). Devuelve [start, end) con clamps a los
+// extremos del array (función pura, testeable).
+export function hourlyWindowBounds(nowIdx, HLen, before = 8, after = 24) {
+  const start = Math.max(0, nowIdx - before);
+  const end = Math.min(HLen, nowIdx + after);
+  return [start, end];
+}
+
+// Desplaza el contenedor horario para alinear la tarjeta AHORA al borde
+// izquierdo. Usa scrollLeft manual (seguro con la pestaña oculta).
+export function scrollHourlyNow() {
+  const c = document.getElementById('hourlyWeather');
+  const nowCard = c?.querySelector('.w-card.now');
+  if (!c || !nowCard) return;
+  c.scrollLeft += nowCard.getBoundingClientRect().left - c.getBoundingClientRect().left;
+}
+
 export function renderWeather(data) {
   const H = data.hourly;
   const D = data.daily;
@@ -98,20 +116,20 @@ export function renderWeather(data) {
       <span>🌡️ ${H.apparent_temperature?.[nowIdx] != null ? Math.round(H.apparent_temperature[nowIdx]) + '°' : '—'}</span>
     </div>`;
 
-  // ── Ayer 12:00 → hoy (36 h): pasado atenuado, hora actual destacada ──
-  let startIdx = H.time.indexOf(`${yesterdayStr}T12:00`);
-  if (startIdx < 0) startIdx = nowIdx; // sin datos pasados: próximas 24 h
-  const slots36 = [];
-  for (let i = startIdx; i < H.time.length && slots36.length < 36 && H.time[i].slice(0, 10) <= todayStr; i++) {
+  // ── 8 h antes + 24 h desde ahora (hasta 32 tarjetas) ──
+  // Anclada a ahora: cruza medianoche sin truncar el futuro.
+  const [wStart, wEnd] = hourlyWindowBounds(nowIdx, H.time.length);
+  const slots = [];
+  for (let i = wStart; i < wEnd; i++) {
     const h = parseInt(H.time[i].slice(11, 13));
     const wc = wmoIcon(H.weather_code?.[i] ?? 0, h);
-    slots36.push({ hour:h, day:H.time[i].slice(0, 10),
+    slots.push({ hour:h, day:H.time[i].slice(0, 10),
       prev:i < nowIdx, now:i === nowIdx,
       temp:H.temperature_2m?.[i], feels:H.apparent_temperature?.[i],
       precip:H.precipitation?.[i], wind:H.wind_speed_10m?.[i], icon:wc.i });
   }
 
-  document.getElementById('hourlyWeather').innerHTML = slots36.map(s => `
+  document.getElementById('hourlyWeather').innerHTML = slots.map(s => `
     <div class="w-card${s.now ? ' now' : s.prev ? ' prev' : ''}">
       ${s.now ? '<div class="now-tag">AHORA</div>' : ''}
       <div class="hour">${s.day === yesterdayStr ? 'Ayer ' : ''}${String(s.hour).padStart(2,'0')}:00</div>
@@ -136,4 +154,6 @@ export function renderWeather(data) {
       <div class="wind">${D.wind_speed_10m_max?.[i] != null ? D.wind_speed_10m_max[i].toFixed(0) + 'km/h' : '—'}</div>
     </div>`;
   }).join('');
+
+  scrollHourlyNow(); // no-op mientras la pestaña Clima está oculta
 }

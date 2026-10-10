@@ -1,7 +1,7 @@
 import { S } from './state.js';
 import { fetchForecast } from './api.js';
 import { renderForecast } from './forecast.js';
-import { renderWeather } from './weather.js';
+import { renderWeather, scrollHourlyNow } from './weather.js';
 import {
   showPicker, showLoading, showCurrentCoords, showLocError,
   getManualCoords, reverseGeocode, syncMapMarker,
@@ -30,6 +30,7 @@ document.querySelectorAll('.tab').forEach(btn => {
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
     btn.classList.add('active');
     document.querySelector('.tab-' + btn.dataset.tab).classList.add('active');
+    if (btn.dataset.tab === 'weather') scrollHourlyNow();
   });
 });
 
@@ -64,6 +65,7 @@ async function refreshForecast() {
     const data = await fetchForecast(S.lat, S.lon);
     renderForecast(data, S.lat, S.lon);
     renderWeather(data);
+    scrollHourlyNow(); // el re-render resetea el scroll del contenedor
     document.getElementById('fetchedAt').textContent =
       new Date().toLocaleTimeString('es-CR', { hour:'2-digit', minute:'2-digit' });
   } catch (err) {

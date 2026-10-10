@@ -36,7 +36,7 @@ Las variables meteorológicas de base vienen de **Open-Meteo** (modelo `best_mat
 
 El campo de probabilidad de lluvia alimenta directamente el score (peso 20 %), por lo que la fusión mejora la precisión del pronóstico sin cambiar la lógica de evaluación.
 
-El pedido a Open-Meteo incluye `past_days=1`, así que la respuesta trae **ayer** además de los 14 días de pronóstico. La pestaña Clima lo aprovecha (tarjeta "Ayer" y bloque horario desde ayer 12:00); la pestaña Astro ignora ese día extra y sigue mostrando hoy..+13.
+El pedido a Open-Meteo incluye `past_days=1`, así que la respuesta trae **ayer** además de los 14 días de pronóstico. La pestaña Clima lo aprovecha (tarjeta "Ayer" y 8 h pasadas antes de la hora actual); la pestaña Astro ignora ese día extra y sigue mostrando hoy..+13.
 
 ## Score de observación
 
@@ -73,7 +73,7 @@ Se detecta automáticamente dentro de cada noche el tramo continuo más largo co
 | `src/js/scoring.js`   | `scoreHour`, `scoreColor`, `verdict` (funciones puras y testeables).                  |
 | `src/js/utils.js`     | Fechas, fase lunar, night slots, ventana óptima, `validateCoord` (funciones puras). |
 | `src/js/forecast.js`  | `renderForecast()`: tarjetas por noche, gráfico, filtros y explainer.                 |
-| `src/js/weather.js`   | Pestaña Clima: códigos WMO, condiciones actuales, 36 h (ayer 12:00 → hoy) y diario Ayer + 14 días. |
+| `src/js/weather.js`   | Pestaña Clima: códigos WMO, condiciones actuales, 8 h pasadas + 24 h (con autoscroll a AHORA) y diario Ayer + 14 días. |
 | `src/js/location.js`  | Selector: mapa (Leaflet), búsqueda, geocoding, autodetección GPS/IP, guardados.       |
 | `src/js/state.js`     | Estado mutable compartido (`S`: coordenadas, mapa, chart).                            |
 | `test/`               | Unit tests con `node:test` (lógica pura y de datos; sin dependencias extra).          |
@@ -162,7 +162,7 @@ Al elegir una ubicación se hace reverse geocoding (Nominatim) para mostrar la d
 - **Gráfico general**: barras de score hora por hora de las 14 noches, con divisores de medianoche.
 - **Refrescar datos**: botón ↻ en el header.
 - **Cambiar ubicación**: botón ← para volver al selector.
-- **Pestañas**: "Astro" y "Tiempo" (condiciones actuales, hora por hora desde ayer 12:00 con la hora actual destacada, y diario Ayer + 14 días).
+- **Pestañas**: "Astro" y "Tiempo" (condiciones actuales, hora por hora: 8 h pasadas + 24 h próximas con la hora actual destacada y autoscroll a AHORA, y diario Ayer + 14 días).
 - **Fuente de datos**: el footer indica el modelo y si la fusión meteoblue está activa (`IFS + meteoblue (lluvia)`) o en fallback (`· sin meteoblue (motivo)`).
 
 ### Filtros
