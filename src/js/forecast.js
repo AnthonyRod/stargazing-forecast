@@ -138,7 +138,7 @@ export function renderForecast(data, lat, lon) {
       </div>`;
     grid.appendChild(card);
 
-    nightRows.push({ d: fmtDate(date), avg, text: v.text });
+    nightRows.push({ d: fmtDate(date), avg, peak, peakHour, text: v.text });
   });
 
   // ── Main chart: hourly scores, one tick per night + day separators ──
@@ -193,9 +193,9 @@ export function renderForecast(data, lat, lon) {
         }
       },
       scales: {
-        x: { grid:{ display:false }, ticks:{ color: css('--muted'), font:{ family:'Inter', size:9 }, maxRotation:0, minRotation:0,
-          autoSkip:false, callback: (_, i) => chartTicks[i] ? [chartHours[i], chartTicks[i]] : (chartHours[i] || '') } },
-        y: { grid:{ display:false }, min:0, max:100, ticks:{ color: css('--muted'), font:{ family:'Inter', size:10 } } }
+        x: { grid:{ display:false }, ticks:{ color: css('--muted'), font:{ family:'Inter', size:10 }, maxRotation:0, minRotation:0,
+          autoSkip:false, callback: (_, i) => chartHours[i] ? (chartTicks[i] ? [chartHours[i], chartTicks[i]] : chartHours[i]) : (chartTicks[i] || '') } },
+        y: { grid:{ color: css('--border') + '40', drawTicks:false }, min:0, max:100, ticks:{ color: css('--muted'), font:{ family:'Inter', size:10 } } }
       }
     },
     plugins: [nightSepPlugin],
@@ -205,8 +205,8 @@ export function renderForecast(data, lat, lon) {
   const mean = Math.round(nightRows.reduce((a, r) => a + r.avg, 0) / nightRows.length);
   const bestRow = nightRows.reduce((a, b) => b.avg > a.avg ? b : a, nightRows[0]);
   document.getElementById('chartTable').innerHTML =
-    `<table><caption class="sr-only">Score promedio por noche</caption><thead><tr><th>Noche</th><th>Promedio</th><th>Estado</th></tr></thead><tbody>` +
-    nightRows.map(r => `<tr><td>${r.d}</td><td>${r.avg}</td><td>${r.text}</td></tr>`).join('') +
+    `<table><caption class="sr-only">Score promedio y pico por noche</caption><thead><tr><th>Noche</th><th>Promedio</th><th>Pico</th><th>Estado</th></tr></thead><tbody>` +
+    nightRows.map(r => `<tr><td>${r.d}</td><td>${r.avg}</td><td>${r.peak} (${r.peakHour})</td><td>${r.text}</td></tr>`).join('') +
     `</tbody></table>`;
   document.getElementById('chartTrend').textContent =
     `Promedio 14 noches: ${mean}. Mejor noche ${bestRow.d} con ${bestRow.avg}. Detalle hora por hora en el gráfico y en cada tarjeta.`;

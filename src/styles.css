@@ -673,6 +673,8 @@ h1 { font-family:var(--font-sans); font-weight:800; font-size:clamp(1.2rem,3vw,1
 }
 .section-title::after { content:''; flex:1; height:1px; background:var(--border); }
 canvas { width:100% !important; }
+.chart-scroll { overflow-x:auto; }
+.chart-inner { position:relative; width:100%; }
 
 .explainer { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:16px 20px; font-size:.78rem; color:var(--muted); margin-bottom:14px; line-height:1.8; }
 .explainer strong { color:var(--text); }
@@ -715,6 +717,7 @@ details.adv summary { cursor:pointer; font-size:.8rem; color:var(--text); paddin
   .moon-widget { flex:1; }
   .d-card { grid-template-columns:1.2fr .4fr 1.4fr .9fr .7fr; }
   .d-card .wind { display:none; }
+  .chart-inner { min-width:1280px; }
 }
 
 @media (max-width:600px) {
