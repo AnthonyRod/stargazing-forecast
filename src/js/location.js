@@ -49,7 +49,7 @@ export function renderSaved() {
     `<div class="saved-location-item" data-id="${s.id}">
       <span class="saved-loc-name">${s.place}</span>
       <span class="saved-loc-coords">${s.lat.toFixed(4)}° · ${s.lon.toFixed(4)}°</span>
-      <button class="saved-loc-delete" data-id="${s.id}">✕</button>
+      <button class="saved-loc-delete" data-id="${s.id}" aria-label="Eliminar ${s.place}">Eliminar</button>
     </div>`
   ).join('');
   savedLocationsList.querySelectorAll('.saved-location-item').forEach(el => {
@@ -210,6 +210,7 @@ export function getManualCoords() {
 function closeSearch() {
   searchResults.classList.remove('show');
   searchResults.innerHTML = '';
+  citySearch.setAttribute('aria-expanded', 'false');
 }
 
 function selectResult(r) {
@@ -231,20 +232,23 @@ async function doSearch(query) {
     if (!data.results || !data.results.length) { closeSearch(); return; }
 
     searchResults.innerHTML = data.results.map(r =>
-      `<div class="search-result-item" data-lat="${r.latitude}" data-lon="${r.longitude}">
+      `<div class="search-result-item" role="option" tabindex="0" data-lat="${r.latitude}" data-lon="${r.longitude}" aria-selected="false">
         <div class="name">${r.name}${r.admin1 ? ', ' + r.admin1 : ''}</div>
         <div class="meta">${r.country || ''} · ${r.latitude.toFixed(4)}°${r.latitude >= 0 ? 'N' : 'S'} ${r.longitude.toFixed(4)}°${r.longitude >= 0 ? 'E' : 'O'}${r.elevation ? ' · ' + r.elevation + 'm' : ''}</div>
       </div>`
     ).join('');
     searchResults.classList.add('show');
+    citySearch.setAttribute('aria-expanded', 'true');
 
+    const pick = el => selectResult({
+      latitude: parseFloat(el.dataset.lat),
+      longitude: parseFloat(el.dataset.lon),
+      name: el.querySelector('.name').textContent,
+      country: '',
+    });
     searchResults.querySelectorAll('.search-result-item').forEach(el => {
-      el.addEventListener('click', () => selectResult({
-        latitude: parseFloat(el.dataset.lat),
-        longitude: parseFloat(el.dataset.lon),
-        name: el.querySelector('.name').textContent,
-        country: '',
-      }));
+      el.addEventListener('click', () => pick(el));
+      el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(el); } });
     });
   } catch (e) {
     closeSearch();
@@ -289,7 +293,7 @@ export async function autoDetectLocation() {
         setCoords(pos.coords.latitude, pos.coords.longitude);
         citySearch.value = '';
         gpsResolved = true;
-        locSource.textContent = '📍 Ubicación precisa (GPS)';
+        locSource.textContent = 'Ubicación precisa (GPS)';
       }
       break;
     } catch (err) {
@@ -313,7 +317,7 @@ export async function autoDetectLocation() {
       const [lat, lon] = d.loc.split(',').map(Number);
       const place = [d.city, d.region, d.country].filter(Boolean).join(', ');
       setCoords(lat, lon, place || undefined);
-      locSource.textContent = '📍 Ubicación aproximada (IP)';
+      locSource.textContent = 'Ubicación aproximada (IP)';
     } catch (_) {}
   }
 

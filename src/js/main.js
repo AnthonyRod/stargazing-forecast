@@ -2,6 +2,8 @@ import { S } from './state.js';
 import { fetchForecast } from './api.js';
 import { renderForecast } from './forecast.js';
 import { renderWeather, scrollHourlyNow } from './weather.js';
+import { icon } from './icons.js';
+import { startWater, stopWater } from './water.js';
 import {
   showPicker, showLoading, showCurrentCoords, showLocError,
   getManualCoords, reverseGeocode, syncMapMarker,
@@ -23,14 +25,28 @@ const fetchBtn        = document.getElementById('fetchBtn');
 const latInput        = document.getElementById('latInput');
 const lonInput        = document.getElementById('lonInput');
 
-// ── TAB SWITCHING ──────────────────────────────────────────────────────────
-document.querySelectorAll('.tab').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-    btn.classList.add('active');
-    document.querySelector('.tab-' + btn.dataset.tab).classList.add('active');
-    if (btn.dataset.tab === 'weather') scrollHourlyNow();
+// ── TAB SWITCHING (ARIA tablist + arrow keys) ─────────────────────────────
+const tabs = [...document.querySelectorAll('.tab')];
+function selectTab(btn, focus = false) {
+  tabs.forEach(b => {
+    const on = b === btn;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-selected', on);
+    b.tabIndex = on ? 0 : -1;
+    const panel = document.getElementById('panel-' + b.dataset.tab);
+    panel.classList.toggle('active', on);
+    if (on) panel.removeAttribute('hidden'); else panel.setAttribute('hidden', '');
+    if (on && focus) b.focus();
+  });
+  if (btn.dataset.tab === 'weather') { scrollHourlyNow(); startWater(); }
+  else stopWater();
+}
+tabs.forEach((btn, i) => {
+  btn.addEventListener('click', () => selectTab(btn));
+  btn.addEventListener('keydown', e => {
+    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+    e.preventDefault();
+    selectTab(tabs[(i + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length], true);
   });
 });
 
@@ -60,6 +76,7 @@ async function startForecast(lat, lon) {
 
 async function refreshForecast() {
   refreshBtn.disabled = true;
+  refreshBtn.setAttribute('aria-busy', 'true');
 
   try {
     const data = await fetchForecast(S.lat, S.lon);
@@ -72,6 +89,7 @@ async function refreshForecast() {
     console.error('Refresh error:', err);
   } finally {
     refreshBtn.disabled = false;
+    refreshBtn.removeAttribute('aria-busy');
   }
 }
 
@@ -99,20 +117,27 @@ function resetToPicker() {
 }
 
 // ── THEME ──────────────────────────────────────────────────────────────
+function paintThemeBtn(theme) {
+  themeBtn.innerHTML = icon(theme === 'dark' ? 'sun' : 'moon', 20);
+  themeBtn.setAttribute('aria-label', theme === 'dark' ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro');
+  themeBtn.setAttribute('aria-pressed', theme === 'light');
+}
 function toggleTheme() {
   const html = document.documentElement;
   const current = html.getAttribute('data-theme') || 'dark';
   const next = current === 'dark' ? 'light' : 'dark';
   html.setAttribute('data-theme', next);
-  themeBtn.textContent = next === 'dark' ? '☀' : '☾';
+  paintThemeBtn(next);
   localStorage.setItem('stargazing-theme', next);
   if (S.chart) S.chart.update();
 }
 
+paintThemeBtn(document.documentElement.getAttribute('data-theme') || 'dark');
+refreshBtn.innerHTML = icon('refresh', 20);
 const savedTheme = localStorage.getItem('stargazing-theme');
 if (savedTheme && savedTheme !== 'dark') {
   document.documentElement.setAttribute('data-theme', 'light');
-  themeBtn.textContent = '☾';
+  paintThemeBtn('light');
 }
 
 // ── EVENT BINDING ────────────────────────────────────────────────────

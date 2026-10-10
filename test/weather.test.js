@@ -1,37 +1,41 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { wmoIcon, skyText, skyIcon, dayLabel, hourlyWindowBounds, WMO } from '../src/js/weather.js';
+import { wmoIconName, skyIconName } from '../src/js/icons.js';
 
 test('wmoIcon: código desconocido', () => {
-  assert.deepEqual(wmoIcon(9999, 12), { i: '❓', t: 'Desconocido' });
+  const r = wmoIcon(9999, 12);
+  assert.equal(r.t, 'Desconocido');
+  assert.match(r.i, /<svg/);
 });
 
 test('wmoIcon: día vs noche', () => {
-  assert.deepEqual(wmoIcon(0, 12), { i: '☀️', t: 'Despejado' });
-  assert.deepEqual(wmoIcon(0, 22), { i: '🌙', t: 'Despejado' });
-  assert.deepEqual(wmoIcon(1, 22), { i: '🌙☁️', t: 'Mayormente despejado' });
-  assert.deepEqual(wmoIcon(2, 22), { i: '🌙☁️', t: 'Parcial nublado' });
+  assert.equal(wmoIcon(0, 12).t, 'Despejado');
+  assert.equal(wmoIconName(0, 12), 'sun');
+  assert.equal(wmoIconName(0, 22), 'moon');
+  assert.equal(wmoIconName(1, 22), 'part');
+  assert.equal(wmoIconName(2, 22), 'part');
 });
 
-test('wmoIcon: convierte chubascos a lluvia de noche', () => {
-  assert.equal(wmoIcon(80, 12).i, '🌦️');
-  assert.equal(wmoIcon(80, 20).i, '🌧️');
+test('wmoIcon: lluvia de noche sigue siendo lluvia', () => {
+  assert.equal(wmoIconName(80, 12), 'rain');
+  assert.equal(wmoIconName(80, 20), 'rain');
 });
 
 test('wmoIcon: sin hora no aplica ajuste nocturno', () => {
-  assert.equal(wmoIcon(0).i, '☀️');
-  assert.equal(wmoIcon(0, null).i, '☀️');
+  assert.equal(wmoIconName(0), 'sun');
+  assert.equal(wmoIconName(0, null), 'sun');
 });
 
 test('wmoIcon: bordes del horario nocturno (18:00–05:59)', () => {
-  assert.equal(wmoIcon(0, 18).i, '🌙'); // >= 18 es noche
-  assert.equal(wmoIcon(0, 6).i, '☀️');  // 06:00 es día
-  assert.equal(wmoIcon(0, 5).i, '🌙');
+  assert.equal(wmoIconName(0, 18), 'moon'); // >= 18 es noche
+  assert.equal(wmoIconName(0, 6), 'sun');  // 06:00 es día
+  assert.equal(wmoIconName(0, 5), 'moon');
 });
 
-test('WMO: tabla coherente (todas las entradas con icono y texto)', () => {
+test('WMO: tabla coherente (todas las entradas con texto)', () => {
   for (const [code, w] of Object.entries(WMO)) {
-    assert.ok(w.i && w.t, `código ${code} incompleto`);
+    assert.ok(w.t, `código ${code} incompleto`);
   }
 });
 
@@ -45,12 +49,13 @@ test('skyText: umbrales 20 / 60', () => {
 });
 
 test('skyIcon: variantes día/noche y umbrales', () => {
-  assert.equal(skyIcon(10, 12), '☀️');
-  assert.equal(skyIcon(10, 22), '🌙');
-  assert.equal(skyIcon(40, 12), '⛅');
-  assert.equal(skyIcon(40, 22), '🌙☁️');
-  assert.equal(skyIcon(80, 12), '☁️');
-  assert.equal(skyIcon(80, 5), '☁️'); // nublado ignora día/noche
+  assert.equal(skyIconName(10, 12), 'sun');
+  assert.equal(skyIconName(10, 22), 'moon');
+  assert.equal(skyIconName(40, 12), 'part');
+  assert.equal(skyIconName(40, 22), 'part');
+  assert.equal(skyIconName(80, 12), 'cloud');
+  assert.equal(skyIconName(80, 5), 'cloud'); // nublado ignora día/noche
+  assert.match(skyIcon(10, 12), /<svg/);
 });
 
 test('dayLabel: Ayer / Hoy / Mañana relativos a la fecha', () => {

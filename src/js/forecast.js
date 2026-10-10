@@ -2,6 +2,7 @@ import { S } from './state.js';
 import { PAST_DAYS, meteoblueLabel } from './api.js';
 import { scoreHour, scoreColor, verdict } from './scoring.js';
 import { addDays, fmtDate, moonPhase, getNightSlots, bestWindow } from './utils.js';
+import { icon } from './icons.js';
 
 // ── RENDER · PESTAÑA ASTRO ─────────────────────────────────────────────
 export function renderForecast(data, lat, lon) {
@@ -42,10 +43,10 @@ export function renderForecast(data, lat, lon) {
 
   // Moon widget
   document.getElementById('moonWidget').innerHTML = `
-    <span class="moon-phase-icon">${moon.icon}</span>
-    <span class="moon-label">${moon.name}</span>
+    <span class="moon-phase-icon">${icon('moon', 30)}</span>
+    <span><span class="moon-label">${moon.name}</span>
     <div class="moon-detail">Día ${moon.phase} del ciclo · ${moon.illum}% ilum.</div>
-    <div class="moon-detail" style="color:${moon.effect.c};margin-top:3px">${moon.effect.t}</div>`;
+    <div class="moon-detail" style="color:${moon.effect.c};margin-top:3px">${moon.effect.t}</div></span>`;
 
   // ── Build night cards ────────────────────────────────────────
   let bestNightIdx = 0, bestNightScore = -1;
@@ -65,8 +66,7 @@ export function renderForecast(data, lat, lon) {
   grid.innerHTML = '';
 
   const chartLabels = [], chartScores = [], chartColors = [], chartBg = [];
-  const chartRaw = [];
-  const dayBoundaries = [];
+  const chartRaw = [], chartTicks = [], chartHours = [], nightRows = [], nightStarts = [];
 
   nightMeta.forEach(({ date, slots, avg, peak, peakHour }, di) => {
     const isBest = di === bestNightIdx;
@@ -82,26 +82,29 @@ export function renderForecast(data, lat, lon) {
     const avgVis   = mean(pick('visibility').map(x => x/1000));
     const avgWind  = mean(pick('wind_speed_10m'));
 
-    const bars = slots.map(({ label, i }) => {
+    const bars = slots.map(({ label, i }, si) => {
       const s  = scores[i] ?? 0;
       const c  = scoreColor(s);
       const cl = H.cloud_cover?.[i] ?? '?';
       const rh = H.relative_humidity_2m?.[i] ?? '?';
       const vi = H.visibility?.[i] !== undefined ? (H.visibility[i] / 1000).toFixed(1) : '?';
       const wi = H.wind_speed_10m?.[i] ?? '?';
+      const tip = `${label} · Score ${s} · Nubes ${cl}% · HR ${rh}%`;
       chartLabels.push(`${date.slice(5)} ${label}`);
       chartScores.push(s);
       chartColors.push(c);
       chartBg.push(c + '55');
       chartRaw.push({ cl, rh, vi, wi });
-      if (chartLabels.length > 1 && label === '00:00') dayBoundaries.push(chartLabels.length - 1);
-      return `<div class="hour-bar"
+      chartTicks.push(si === 0 ? fmtDate(date) : '');
+      chartHours.push(label === '00:00' ? '00h' : si === 0 ? label.slice(0, 2) + 'h' : '');
+      if (si === 0) nightStarts.push(chartLabels.length - 1);
+      return `<div class="hour-bar" tabindex="0" role="img" aria-label="${tip}"
         style="background:${c};opacity:${0.18+s/100*0.82}"
-        data-tip="${label} · Score:${s} · Nubes:${cl}% · HR:${rh}%"></div>`;
+        data-tip="${tip}"></div>`;
     }).join('');
 
     const winTag = win
-      ? `<div class="window-tag">★ ${win[0].label}–${win[win.length-1].label}
+      ? `<div class="window-tag">${win[0].label}–${win[win.length-1].label}
           · avg ${Math.round(win.map(w=>w.s).reduce((a,b)=>a+b,0)/win.length)}</div>`
       : `<div class="no-window-tag">Sin ventana esta noche</div>`;
 
@@ -110,64 +113,54 @@ export function renderForecast(data, lat, lon) {
     card.innerHTML = `
       <div class="night-header">
         <div>
-          <div class="night-date">${isBest ? '★ ' : ''}${fmtDate(date)}</div>
-          <div class="night-sub">${moonN.icon} ${moonN.name} · ${moonN.illum}% ilum.</div>
+          <div class="night-date">${fmtDate(date)}</div>
+          <div class="night-sub">${moonN.name} · ${moonN.illum}% ilum.</div>
+          ${isBest ? '<span class="best-badge">Mejor noche</span>' : ''}
         </div>
         <div>
-          <div class="score-badge" style="color:${v.c}">${avg}</div>
+          <div class="score-badge mono" style="color:${v.c}">${avg}</div>
           <div class="score-label">SCORE PROM</div>
           <div class="score-verdict" style="color:${v.c}">${v.text}</div>
         </div>
       </div>
-      <div class="hour-timeline">${bars}</div>
-      <div class="hour-labels"><span>18h</span><span>21h</span><span>00h</span><span>03h</span><span>05h</span></div>
-      <div class="peak-tag" style="color:${scoreColor(peak)};border-color:${scoreColor(peak)}55;background:${scoreColor(peak)}12">▲ ${peakHour} · pico ${peak}</div>
+      <div class="hour-timeline" role="group" aria-label="Score por hora ${fmtDate(date)}">${bars}</div>
+      <div class="hour-labels" aria-hidden="true"><span>18h</span><span>21h</span><span>00h</span><span>03h</span><span>05h</span></div>
+      <div class="peak-tag" style="color:${scoreColor(peak)};border-color:${scoreColor(peak)}55;background:${scoreColor(peak)}12">${peakHour} · pico ${peak} (${verdict(peak).text})</div>
       ${winTag}
       <div class="metrics">
-        <div class="metric"><div class="metric-val">${avgCloud}%</div><div class="metric-lbl">Nubes</div></div>
-        <div class="metric"><div class="metric-val">${avgRh}%</div><div class="metric-lbl">Humedad</div></div>
-        <div class="metric"><div class="metric-val">${parseFloat(avgVis).toFixed(0)}km</div><div class="metric-lbl">Visib.</div></div>
-        <div class="metric"><div class="metric-val">${avgWind}</div><div class="metric-lbl">Viento</div></div>
+        <div class="metric"><div class="metric-val mono">${avgCloud}%</div><div class="metric-lbl">Nubes</div></div>
+        <div class="metric"><div class="metric-val mono">${avgRh}%</div><div class="metric-lbl">Humedad</div></div>
+        <div class="metric"><div class="metric-val mono">${parseFloat(avgVis).toFixed(0)}km</div><div class="metric-lbl">Visib.</div></div>
+        <div class="metric"><div class="metric-val mono">${avgWind}</div><div class="metric-lbl">Viento</div></div>
       </div>`;
     grid.appendChild(card);
+
+    nightRows.push({ d: fmtDate(date), avg, text: v.text });
   });
 
-  // ── Day-marker plugin ───────────────────────────────────────
-  const border = () => getComputedStyle(document.documentElement).getPropertyValue('--border').trim() || '#141e35';
-  const dayMarkerPlugin = {
-    id: 'dayMarkers',
+  // ── Main chart: hourly scores, one tick per night + day separators ──
+  const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const nightSepPlugin = {
+    id: 'nightSep',
     afterDraw(chart) {
-      const ctx = chart.ctx;
-      const xAxis = chart.scales.x;
-      const yAxis = chart.scales.y;
+      const { ctx, scales: { x, y } } = chart;
       ctx.save();
-      ctx.strokeStyle = border();
+      ctx.strokeStyle = css('--text');
+      ctx.globalAlpha = 0.35;
       ctx.lineWidth = 1;
-      ctx.setLineDash([3, 4]);
-      dayBoundaries.forEach(idx => {
-        const x = xAxis.getPixelForValue(idx);
+      ctx.setLineDash([4, 4]);
+      nightStarts.slice(1).forEach(idx => {
+        const px = x.getPixelForValue(idx);
+        // separator sits between previous night's last bar and this night's first
+        const edge = px - (x.width / chartLabels.length) / 2;
         ctx.beginPath();
-        ctx.moveTo(x, yAxis.top);
-        ctx.lineTo(x, yAxis.bottom);
+        ctx.moveTo(edge, y.top);
+        ctx.lineTo(edge, y.bottom);
         ctx.stroke();
-        const dayLabel = chartLabels[idx].slice(0, 5);
-        ctx.restore();
-        ctx.save();
-        ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--muted').trim() || '#3a4a60';
-        ctx.font = '7px Space Mono';
-        ctx.textAlign = 'center';
-        ctx.fillText(dayLabel, x, yAxis.bottom + 4);
-        ctx.restore();
-        ctx.save();
-        ctx.strokeStyle = border();
-        ctx.lineWidth = 1;
-        ctx.setLineDash([3, 4]);
       });
       ctx.restore();
     }
   };
-
-  // ── Main chart ──────────────────────────────────────────────
   if (S.chart) S.chart.destroy();
   S.chart = new Chart(document.getElementById('mainChart').getContext('2d'), {
     type: 'bar',
@@ -186,30 +179,45 @@ export function renderForecast(data, lat, lon) {
       plugins: {
         legend: { display:false },
         tooltip: {
-          backgroundColor:'#0d1224', titleColor:'#b8c8e0',
-          bodyColor:'#e8f0ff', borderColor:'#141e35', borderWidth:1,
+          backgroundColor: css('--surface2'), titleColor: css('--text'),
+          bodyColor: css('--star'), borderColor: css('--border'), borderWidth:1,
           callbacks: {
             label: ctx => {
               const r = chartRaw[ctx.dataIndex];
-              return `Score: ${ctx.parsed.y} — ${verdict(ctx.parsed.y).text}  ·  Nubes:${r.cl}% HR:${r.rh}% Vis:${r.vi}km Viento:${r.wi}km/h`;
+              return ` Score ${ctx.parsed.y} (${verdict(ctx.parsed.y).text}) · Nubes ${r.cl}% HR ${r.rh}% Vis ${r.vi}km Viento ${r.wi}km/h`;
             }
           }
         }
       },
       scales: {
-        x: { grid:{ display:false }, ticks:{ color: getComputedStyle(document.documentElement).getPropertyValue('--muted').trim() || '#3a4a60', font:{ family:'Space Mono', size:6 }, maxRotation:90 } },
-        y: { grid:{ display:false }, min:0, max:100, ticks:{ color: getComputedStyle(document.documentElement).getPropertyValue('--muted').trim() || '#3a4a60', font:{ family:'Space Mono', size:9 } } }
+        x: { grid:{ display:false }, ticks:{ color: css('--muted'), font:{ family:'Inter', size:9 }, maxRotation:0, minRotation:0,
+          autoSkip:false, callback: (_, i) => chartTicks[i] ? [chartHours[i], chartTicks[i]] : (chartHours[i] || '') } },
+        y: { grid:{ display:false }, min:0, max:100, ticks:{ color: css('--muted'), font:{ family:'Inter', size:10 } } }
       }
     },
-    plugins: [dayMarkerPlugin]
+    plugins: [nightSepPlugin],
   });
+
+  // ── Accessible table + trend fallback ──
+  const mean = Math.round(nightRows.reduce((a, r) => a + r.avg, 0) / nightRows.length);
+  const bestRow = nightRows.reduce((a, b) => b.avg > a.avg ? b : a, nightRows[0]);
+  document.getElementById('chartTable').innerHTML =
+    `<table><caption class="sr-only">Score promedio por noche</caption><thead><tr><th>Noche</th><th>Promedio</th><th>Estado</th></tr></thead><tbody>` +
+    nightRows.map(r => `<tr><td>${r.d}</td><td>${r.avg}</td><td>${r.text}</td></tr>`).join('') +
+    `</tbody></table>`;
+  document.getElementById('chartTrend').textContent =
+    `Promedio 14 noches: ${mean}. Mejor noche ${bestRow.d} con ${bestRow.avg}. Detalle hora por hora en el gráfico y en cada tarjeta.`;
 
   // ── Night filter ────────────────────────────────────────────
   const filterBtns = document.querySelectorAll('.filter-btn');
   const gridEl = document.getElementById('nightsGrid');
   const cntEl = document.getElementById('filterCount');
   function applyFilter(f) {
-    filterBtns.forEach(b => b.classList.toggle('active', b.dataset.filter === f));
+    filterBtns.forEach(b => {
+      const on = b.dataset.filter === f;
+      b.classList.toggle('active', on);
+      b.setAttribute('aria-pressed', on);
+    });
     gridEl.classList.toggle('filter-excellent', f === 'excellent');
     const visible = [...gridEl.children].filter(c => f !== 'excellent' || c.classList.contains('is-excellent')).length;
     cntEl.textContent = `${visible} / ${gridEl.children.length} noches`;
@@ -224,13 +232,13 @@ export function renderForecast(data, lat, lon) {
     <strong>Cómo se calcula el Score (0–100):</strong><br>
     Nubosidad <strong>45%</strong> · Prob. lluvia <strong>20%</strong> ·
     Humedad relativa <strong>20%</strong> · Visibilidad <strong>15%</strong> ·
-    Penalización si viento &gt;20 km/h. HR &gt;90% + visibilidad &lt;5km = penalización por niebla.<br><br>
+    Penalización si viento &gt;25 km/h. HR &gt;90% + visibilidad &lt;5km = penalización por niebla.<br><br>
     <strong>Fase lunar hoy:</strong> Día ${moon.phase} del ciclo · ${moon.illum}% iluminación →
     <span style="color:${moon.effect.c}">${moon.effect.t}</span>.
     ${elevation ? `A ${data.elevation}m la niebla nocturna es el factor limitante más frecuente;` : ''}
     HR &gt;95% = riesgo de rocío sobre óptica incluso con cielo despejado.<br><br>
     <strong>Mejor noche en 14 días:</strong>
-    ${fmtDate(bestDate)} · ${bestMoon.icon} ${bestMoon.illum}% iluminación lunar ·
-    Score promedio nocturno <span style="color:#40e0a0">${bestNightScore}/100</span>.
+    ${fmtDate(bestDate)} · ${bestMoon.name}, ${bestMoon.illum}% iluminación lunar ·
+    Score promedio nocturno <span style="color:var(--good)">${bestNightScore}/100</span>.
   `;
 }

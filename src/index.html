@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,7 +8,7 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Outfit:wght@300;400;600;800&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap">
 <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
@@ -16,66 +16,68 @@
 <div id="locationOverlay">
   <div class="location-card" id="locationCard">
     <div id="locationPicker">
-      <h1>✦ STARGAZING FORECAST</h1>
-      <div class="desc">Buscá una ciudad o ingresá coordenadas para obtener el pronóstico.</div>
-      <div class="desc-sub">Si permitís la geolocalización en el navegador, podés detectar tu ubicación exacta.</div>
+      <h1><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 2.7 5.6 6.1.8-4.5 4.2 1.1 6-5.4-3-5.4 3 1.1-6L3.2 9.4l6.1-.8Z"/></svg> STARGAZING FORECAST</h1>
+      <div class="desc">Buscá una ciudad para obtener el pronóstico.</div>
 
       <div class="search-wrap">
-        <span class="search-icon">🔍</span>
-        <input type="text" id="citySearch" placeholder="Buscar ciudad…" autocomplete="off">
-        <div class="search-results" id="searchResults"></div>
+        <span class="search-icon" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></span>
+        <label class="sr-only" for="citySearch">Buscar ciudad</label>
+        <input type="text" id="citySearch" placeholder="Buscar ciudad…" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="searchResults" aria-autocomplete="list">
+        <div class="search-results" id="searchResults" role="listbox" aria-label="Resultados de búsqueda"></div>
       </div>
 
-      <div class="divider">o ingresá coordenadas</div>
-
-      <div class="coord-grid">
-        <div class="coord-field">
-          <label>Latitud</label>
-          <input type="text" id="latInput" placeholder="Ej: 9.7482" inputmode="decimal">
+      <details class="adv">
+        <summary>Opciones avanzadas: coordenadas o mapa</summary>
+        <div class="divider">ingresá coordenadas</div>
+        <div class="coord-grid">
+          <div class="coord-field">
+            <label for="latInput">Latitud</label>
+            <input type="text" id="latInput" placeholder="Ej: 9.7482" inputmode="decimal" aria-describedby="locationError">
+          </div>
+          <div class="coord-field">
+            <label for="lonInput">Longitud</label>
+            <input type="text" id="lonInput" placeholder="Ej: -83.9959" inputmode="decimal" aria-describedby="locationError">
+          </div>
         </div>
-        <div class="coord-field">
-          <label>Longitud</label>
-          <input type="text" id="lonInput" placeholder="Ej: -83.9959" inputmode="decimal">
-        </div>
-      </div>
-
-      <div class="divider">o elegí en el mapa</div>
-      <div id="map"></div>
+        <div class="divider">o elegí en el mapa</div>
+        <div id="map" role="application" aria-label="Mapa para elegir ubicación"></div>
+      </details>
 
       <div class="saved-locations" id="savedLocations">
-        <div class="saved-locations-header">📍 Ubicaciones guardadas</div>
+        <div class="saved-locations-header">Ubicaciones guardadas</div>
         <div class="saved-locations-list" id="savedLocationsList"></div>
       </div>
 
-      <button class="fetch-btn" id="fetchBtn">🔭 Ver pronóstico</button>
+      <button class="fetch-btn" id="fetchBtn">Ver pronóstico</button>
 
-      <div class="location-error" id="locationError"></div>
+      <div class="location-error" id="locationError" role="alert"></div>
 
-      <div class="location-loading" id="locLoading">
-        <div class="loc-loading-spinner">✦</div>
+      <div class="location-loading" id="locLoading" aria-busy="true">
+        <div class="loc-loading-spinner" aria-hidden="true"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="m12 3 2.7 5.6 6.1.8-4.5 4.2 1.1 6-5.4-3-5.4 3 1.1-6L3.2 9.4l6.1-.8Z"/></svg></div>
         <div class="loc-loading-text">Obteniendo ubicación precisa...</div>
         <div class="loc-loading-sub">Usando GPS &mdash; si no se obtiene, usaremos una ubicación aproximada</div>
       </div>
 
       <div class="location-current" id="locationCurrent">
-        <span>📍</span>
+        <span aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-5.5-7-11a7 7 0 0 1 14 0c0 5.5-7 11-7 11Z"/><circle cx="12" cy="10" r="2.5"/></svg></span>
         <span class="coords" id="currentCoords"></span>
         <span class="loc-source" id="locSource"></span>
-        <button class="save-btn" id="saveLocBtn">💾</button>
-        <button class="change-btn" id="changeLocBtn">✕ cambiar</button>
+        <button class="save-btn" id="saveLocBtn" aria-label="Guardar ubicación">Guardar</button>
+        <button class="change-btn" id="changeLocBtn">cambiar</button>
       </div>
     </div>
 
-    <div id="loadingState">
-      <div class="loading-icon">✦</div>
+    <div id="loadingState" aria-busy="true" aria-live="polite">
+      <div class="loading-icon" aria-hidden="true">✦</div>
       <div class="loading-text">CARGANDO DATOS METEOROLÓGICOS</div>
       <div class="loading-bar"><div class="loading-fill"></div></div>
+      <div class="skel-grid" aria-hidden="true"><div></div><div></div><div></div><div></div><div></div><div></div></div>
     </div>
   </div>
 </div>
 
 <div id="errorBox">
-  <div class="error-card">
+  <div class="error-card" role="alert">
     <div class="error-title">Error al obtener datos</div>
     <div class="error-msg" id="errorMsg">No se pudo conectar con Open-Meteo.</div>
     <button class="retry-btn" id="retryBtn">↺ Reintentar</button>
@@ -86,14 +88,14 @@
 <div id="app">
   <header>
     <div>
-      <h1>✦ STARGAZING FORECAST</h1>
+      <h1>STARGAZING FORECAST</h1>
       <div class="subtitle" id="headerSubtitle">Cargando…</div>
       <button class="change-loc-btn" id="headerChangeLoc">← Cambiar ubicación</button>
     </div>
     <div class="header-right">
       <div class="moon-widget" id="moonWidget"></div>
-      <button class="theme-btn" id="themeBtn" title="Cambiar tema">☀</button>
-      <button class="refresh-btn" id="refreshBtn" title="Actualizar datos">↻</button>
+      <button class="theme-btn" id="themeBtn" aria-label="Cambiar a tema claro" aria-pressed="false"></button>
+      <button class="refresh-btn" id="refreshBtn" aria-label="Actualizar datos"></button>
       <div class="refresh-badge">
         <span class="ts" id="fetchedAt">—</span>
         Datos en vivo<br>Open-Meteo API<br>14 días
@@ -101,42 +103,43 @@
     </div>
   </header>
 
-  <div class="tabs">
-    <button class="tab active" data-tab="astro">✦ Astro</button>
-    <button class="tab" data-tab="weather">🌤 Clima</button>
+  <div class="tabs" role="tablist" aria-label="Vistas">
+    <button class="tab active" data-tab="astro" role="tab" id="tab-astro" aria-selected="true" aria-controls="panel-astro">Astro</button>
+    <button class="tab" data-tab="weather" role="tab" id="tab-weather" aria-selected="false" aria-controls="panel-weather" tabindex="-1">Clima</button>
   </div>
 
-  <div class="tab-content tab-astro active">
+  <div class="tab-content tab-astro active" id="panel-astro" role="tabpanel" aria-labelledby="tab-astro" tabindex="0">
     <div class="current-conditions" id="currentConditions"></div>
 
-    <div class="legend">
-    <div class="legend-item"><div class="legend-dot" style="background:#40e0a0"></div>Score ≥ 70 Excelente</div>
-    <div class="legend-item"><div class="legend-dot" style="background:#f0c060"></div>45–69 Parcial</div>
-    <div class="legend-item"><div class="legend-dot" style="background:#e05060"></div>&lt;45 Bloqueado</div>
-    <div class="legend-item" style="margin-left:auto;color:#3a4a60">▓ noche activa 18:00–05:00</div>
+    <div class="legend" aria-label="Leyenda de score">
+    <div class="legend-item"><div class="legend-dot" style="background:var(--good)"></div>≥ 70 Excelente</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--warn)"></div>40–69 Bueno / Parcial</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--bad)"></div>&lt;40 Bloqueado</div>
+    <div class="legend-item" style="margin-left:auto">▓ noche activa 18:00–05:00</div>
   </div>
 
   <div class="nights-filter">
-    <span class="filter-lbl">Filtrar:</span>
-    <button class="filter-btn active" data-filter="all">Todas</button>
-    <button class="filter-btn" data-filter="excellent">Solo excelentes</button>
-    <span class="filter-count" id="filterCount"></span>
+    <span class="filter-lbl" id="filterLbl">Filtrar:</span>
+    <button class="filter-btn active" data-filter="all" aria-pressed="true">Todas</button>
+    <button class="filter-btn" data-filter="excellent" aria-pressed="false">Solo excelentes</button>
+    <span class="filter-count" id="filterCount" aria-live="polite"></span>
   </div>
 
-  <div class="nights-grid" id="nightsGrid"></div>
+  <div class="nights-grid" id="nightsGrid" aria-live="polite"></div>
 
   <div class="chart-section">
     <div class="section-title">Score stargazing por hora nocturna · 14 noches</div>
-    <canvas id="mainChart" height="110"></canvas>
+    <canvas id="mainChart" height="110" role="img" aria-label="Gráfico de score por noche"></canvas>
+    <details class="data-table"><summary>Ver datos en tabla</summary><div id="chartTable"></div><p class="trend" id="chartTrend"></p></details>
   </div>
 
   <div class="explainer" id="explainer"></div>
   </div>
 
-  <div class="tab-content tab-weather">
+  <div class="tab-content tab-weather" id="panel-weather" role="tabpanel" aria-labelledby="tab-weather" tabindex="0" hidden>
     <div class="current-conditions" id="weatherCurrent"></div>
     <div class="section-title" style="margin-bottom:10px">Hora por hora · 8 h atrás + 24 h (AHORA destacado)</div>
-    <div class="hourly-weather" id="hourlyWeather"></div>
+    <div class="hourly-weather" id="hourlyWeather" tabindex="0" aria-label="Pronóstico hora por hora"></div>
     <div class="section-title" style="margin-top:20px;margin-bottom:10px">Ayer + pronóstico 14 días</div>
     <div class="daily-weather" id="dailyWeather"></div>
   </div>
