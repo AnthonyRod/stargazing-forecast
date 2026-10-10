@@ -1,5 +1,5 @@
 import { S } from './state.js';
-import { PAST_DAYS } from './api.js';
+import { PAST_DAYS, meteoblueLabel } from './api.js';
 import { scoreHour, scoreColor, verdict } from './scoring.js';
 import { addDays, fmtDate, moonPhase, getNightSlots, bestWindow } from './utils.js';
 
@@ -31,7 +31,12 @@ export function renderForecast(data, lat, lon) {
     + ` · ${data.timezone} · GMT${data.utc_offset_seconds >= 0 ? '+' : ''}${data.utc_offset_seconds/3600}`;
   document.getElementById('fetchedAt').textContent =
     new Date().toLocaleTimeString('es-CR', { hour:'2-digit', minute:'2-digit' });
-  document.getElementById('footerModel').textContent = data._model || 'best_match';
+  const modelEl = document.getElementById('footerModel');
+  modelEl.textContent = data._model || 'best_match';
+  if (data._meteoblue && data._meteoblue !== 'active') {
+    modelEl.textContent += ` · sin meteoblue (${meteoblueLabel(data._meteoblue)})`;
+    modelEl.title = `Fusión de lluvia inactiva: ${data._meteoblue}`;
+  }
   document.getElementById('footerDate').textContent =
     `Actualizado: ${new Date().toLocaleString('es-CR')} · ${timeArr.length} horas de datos`;
 

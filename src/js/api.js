@@ -71,6 +71,7 @@ export async function fetchForecast(lat, lon) {
     try {
       await applyMeteobluePrecip(lat, lon, data);
     } catch (e) {
+      data._meteoblue = data._meteoblue ?? 'unreachable';
       console.warn('meteoblue overlay omitido:', e.message);
     }
 
@@ -78,6 +79,23 @@ export async function fetchForecast(lat, lon) {
   }
 
   throw new Error(lastErr?.message || 'No se pudo obtener datos de ningún modelo disponible');
+}
+
+// Estado de la fusión meteoblue (viaja en data._meteoblue hasta el footer).
+// Etiqueta corta en español para la UI (función pura, testeable).
+export function meteoblueLabel(code) {
+  if (code === 'active') return 'activa';
+  if (code === 'no_key') return 'sin clave';
+  if (code === 'no_match') return 'sin horas coincidentes';
+  if (code === 'unreachable') return 'proxy no responde';
+  if (code === 'network_error') return 'API caída';
+  if (code === 'parse_error' || code === 'bad_data') return 'datos inválidos';
+  if (code === 'bad_coords') return 'coordenadas inválidas';
+  if (typeof code === 'string' && code.startsWith('http_')) {
+    const s = code.slice(5);
+    return (s === '401' || s === '403') ? 'clave rechazada' : `error HTTP ${s}`;
+  }
+  return 'no disponible';
 }
 
 // meteoblue aporta precipitación horaria (0–7 días) con ajuste de terreno (mLM).
@@ -90,7 +108,8 @@ export async function applyMeteobluePrecip(lat, lon, data) {
   );
   if (!res.ok) throw new Error(`proxy HTTP ${res.status}`);
   const mb = await res.json();
-  if (!mb.available || !Array.isArray(mb.times)) return;
+  if (!mb.available) { data._meteoblue = mb.reason || 'unavailable'; return; }
+  if (!Array.isArray(mb.times)) { data._meteoblue = 'bad_data'; return; }
 
   const byKey = new Map();
   for (let i = 0; i < mb.times.length; i++) {
@@ -110,7 +129,7 @@ export async function applyMeteobluePrecip(lat, lon, data) {
     if (e.pp != null) H.precipitation_probability[i]  = e.pp;
     overlaid++;
   }
-  if (!overlaid) return;
+  if (!overlaid) { data._meteoblue = 'no_match'; return; }
 
   // Los totales diarios de días 0–6 se recalculan desde las horas fusionadas.
   // Se usa la fecha de cada entrada diaria (ayer es el índice 0 con past_days).
@@ -126,5 +145,6 @@ export async function applyMeteobluePrecip(lat, lon, data) {
   }
 
   data._model = 'IFS + meteoblue (lluvia)';
+  data._meteoblue = 'active';
   console.info(`meteoblue: ${overlaid} horas de precipitación aplicadas`);
 }

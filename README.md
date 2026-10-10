@@ -106,7 +106,7 @@ Navegador (SPA)
 
 - **Alineación temporal**: el cliente le pasa a meteoblue la misma zona horaria que devuelve Open-Meteo (`timezone auto`, p. ej. `America/Costa_Rica`), por lo que ambas series horarias comparten etiquetas locales idénticas (`2026-10-09T18:00`). No hay desplazamientos UTC que corregir.
 - **Fusión por marca de tiempo**: se construye un mapa `hora → {precipitación, probabilidad}` y se aplica donde la hora coincida exactamente (primeros 7 días, 168 horas).
-- **Fallback silencioso**: si el proxy devuelve `{available:false}` (sin clave, red caída, error) o falla el `fetch`, la app continúa con los datos de Open-Meteo sin romperse.
+- **Fallback silencioso**: si el proxy devuelve `{available:false}` (sin clave, red caída, error) o falla el `fetch`, la app continúa con los datos de Open-Meteo sin romperse. El estado de la fusión se refleja en el footer: con clave OK muestra `IFS + meteoblue (lluvia)`; si está inactiva muestra `· sin meteoblue (motivo)`.
 
 ## Arquitectura técnica
 
@@ -163,6 +163,7 @@ Al elegir una ubicación se hace reverse geocoding (Nominatim) para mostrar la d
 - **Refrescar datos**: botón ↻ en el header.
 - **Cambiar ubicación**: botón ← para volver al selector.
 - **Pestañas**: "Astro" y "Tiempo" (condiciones actuales, hora por hora desde ayer 12:00 con la hora actual destacada, y diario Ayer + 14 días).
+- **Fuente de datos**: el footer indica el modelo y si la fusión meteoblue está activa (`IFS + meteoblue (lluvia)`) o en fallback (`· sin meteoblue (motivo)`).
 
 ### Filtros
 
@@ -198,6 +199,14 @@ El servidor está en `server.mjs`. En el panel de Railway:
 3. Listo. Sin clave, la app igual funciona (modo fallback, sin fusión de lluvia).
 
 El `package.json` ya trae `"start": "node server.mjs"`.
+
+#### La clave no aparece (`NO configurada` en los logs)
+
+1. El nombre debe ser exacto: `METEOBLUE_API_KEY` (mayúsculas, sin espacios).
+2. Seteala en el **servicio correcto**: Service → Variables (o a nivel proyecto) — no en otro servicio.
+3. Guardá y **redeployá**: el arranque debe imprimir `METEOBLUE_API_KEY: configurada (env METEOBLUE_API_KEY)`. Mirá el log de la **última** instancia, no de un deploy viejo.
+4. El archivo `.meteoblue_api_key` es solo para desarrollo **local** (está gitignored y no viaja a Railway): en el deploy solo se lee la variable de entorno.
+5. Si la variable está pero la clave es inválida/vencida, el log avisa `clave meteoblue rechazada (HTTP 401/403)` y el footer de la app muestra `· sin meteoblue (clave rechazada)`.
 
 ### Local
 

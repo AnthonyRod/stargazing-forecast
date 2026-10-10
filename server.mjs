@@ -44,6 +44,21 @@ function getApiKey() {
   }
 }
 
+// Describe de dónde sale la clave para que el log de arranque distinga
+// "variable definida pero vacía" de "variable ausente".
+function apiKeyStatus() {
+  if ('METEOBLUE_API_KEY' in process.env) {
+    return String(process.env.METEOBLUE_API_KEY).trim()
+      ? 'configurada (env METEOBLUE_API_KEY)'
+      : 'DEFINIDA PERO VACÍA — revisá el valor (sin espacios de más)';
+  }
+  try {
+    const k = fs.readFileSync(path.join(PROJECT_ROOT, '.meteoblue_api_key'), 'utf8').trim();
+    if (k) return 'configurada (archivo .meteoblue_api_key)';
+  } catch { /* ausente: normal en deploys, el archivo es solo local */ }
+  return 'NO configurada (falta METEOBLUE_API_KEY en Railway: Variables del servicio + redeploy)';
+}
+
 function sendJson(res, status, obj) {
   res.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
@@ -96,6 +111,7 @@ function fetchMeteoblue(lat, lon, tz) {
     const req = https.get(url, res => {
       if (res.statusCode !== 200) {
         res.resume();
+        console.warn(`meteoblue: clave rechazada o error (HTTP ${res.statusCode})`);
         return resolve({ available: false, reason: `http_${res.statusCode}` });
       }
       let body = '';
@@ -119,7 +135,10 @@ function fetchMeteoblue(lat, lon, tz) {
       });
     });
     req.setTimeout(20000, () => req.destroy(new Error('timeout')));
-    req.on('error', () => resolve({ available: false, reason: 'network_error' }));
+    req.on('error', () => {
+      console.warn('meteoblue: no se pudo contactar a my.meteoblue.com (network_error)');
+      resolve({ available: false, reason: 'network_error' });
+    });
   });
 }
 
@@ -155,5 +174,5 @@ const server = http.createServer((req, res) => {
 
 server.listen(PORT, () => {
   console.log(`Stargazing Forecast server en http://localhost:${PORT}`);
-  console.log(`METEOBLUE_API_KEY: ${getApiKey() ? 'configurada' : 'NO configurada (modo fallback, sin meteoblue)'}`);
+  console.log(`METEOBLUE_API_KEY: ${apiKeyStatus()}`);
 });

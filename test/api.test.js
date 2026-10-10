@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   REQUIRED_FIELDS, WEATHER_FIELDS, FALLBACK_MODELS,
-  buildApiUrl, missingFields, fetchForecast, applyMeteobluePrecip,
+  buildApiUrl, missingFields, fetchForecast, applyMeteobluePrecip, meteoblueLabel,
 } from '../src/js/api.js';
 
 // ── helpers ───────────────────────────────────────────────────────────
@@ -168,6 +168,54 @@ test('applyMeteobluePrecip: con día pasado, ayer queda intacto y hoy se fusiona
   assert.equal(data.daily.precipitation_sum[1], 48);
   assert.equal(data.daily.precipitation_sum[3], 99); // sin horas => intacto
   assert.equal(data._model, 'IFS + meteoblue (lluvia)');
+});
+
+test('meteoblueLabel: mapea cada código a español', () => {
+  assert.equal(meteoblueLabel('active'), 'activa');
+  assert.equal(meteoblueLabel('no_key'), 'sin clave');
+  assert.equal(meteoblueLabel('no_match'), 'sin horas coincidentes');
+  assert.equal(meteoblueLabel('unreachable'), 'proxy no responde');
+  assert.equal(meteoblueLabel('network_error'), 'API caída');
+  assert.equal(meteoblueLabel('parse_error'), 'datos inválidos');
+  assert.equal(meteoblueLabel('bad_data'), 'datos inválidos');
+  assert.equal(meteoblueLabel('bad_coords'), 'coordenadas inválidas');
+  assert.equal(meteoblueLabel('http_401'), 'clave rechazada');
+  assert.equal(meteoblueLabel('http_403'), 'clave rechazada');
+  assert.equal(meteoblueLabel('http_500'), 'error HTTP 500');
+  assert.equal(meteoblueLabel('whatever'), 'no disponible');
+  assert.equal(meteoblueLabel(undefined), 'no disponible');
+});
+
+test('applyMeteobluePrecip: registra _meteoblue=active al fusionar', async t => {
+  const data = makeForecastFixture({ hours: 24 });
+  mockFetch(t, () => jsonResponse({
+    available: true,
+    times: mbTimes(data).slice(0, 2),
+    precipitation: [1, 2],
+    precipitation_probability: [80, 81],
+  }));
+  await applyMeteobluePrecip(9.75, -83.99, data);
+  assert.equal(data._meteoblue, 'active');
+});
+
+test('applyMeteobluePrecip: registra el motivo cuando el proxy no está disponible', async t => {
+  const data = makeForecastFixture({ hours: 24 });
+  mockFetch(t, () => jsonResponse({ available: false, reason: 'no_key' }));
+  await applyMeteobluePrecip(9.75, -83.99, data);
+  assert.equal(data._meteoblue, 'no_key');
+  assert.equal(data._model, undefined);
+});
+
+test('applyMeteobluePrecip: registra no_match sin horas coincidentes', async t => {
+  const data = makeForecastFixture({ hours: 24 });
+  mockFetch(t, () => jsonResponse({
+    available: true,
+    times: ['2027-01-01 00:00'],
+    precipitation: [5],
+    precipitation_probability: [50],
+  }));
+  await applyMeteobluePrecip(9.75, -83.99, data);
+  assert.equal(data._meteoblue, 'no_match');
 });
 
 test('applyMeteobluePrecip: no recalcula días con menos de 20 horas', async t => {
@@ -364,6 +412,20 @@ test('fetchForecast: aplica la fusión meteoblue al flujo completo', async t => 
   assert.equal(out._model, 'IFS + meteoblue (lluvia)');
   assert.equal(out.hourly.precipitation[0], 2);
   assert.equal(out.hourly.precipitation_probability[0], 88);
+});
+
+test('fetchForecast: registra unreachable si el proxy falla', async t => {
+  const data = makeForecastFixture({ hours: 24 });
+  mockFetch(t, url => {
+    const u = String(url);
+    if (u.includes('api.open-meteo.com')) return jsonResponse(data);
+    throw new Error('proxy caído');
+  });
+  t.mock.method(console, 'warn', () => {}); // silencia el warning esperado
+
+  const out = await fetchForecast(9.75, -83.99);
+  assert.equal(out._meteoblue, 'unreachable');
+  assert.equal(out._model, 'Mejor disponible'); // con datos, pero sin fusión
 });
 
 test('fetchForecast: si meteoblue falla, igual devuelve el pronóstico Open-Meteo', async t => {
