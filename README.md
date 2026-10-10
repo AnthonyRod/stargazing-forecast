@@ -1,20 +1,28 @@
 # ✦ Stargazing Forecast
 
-Web app auto-contenida, sin dependencias de build, cero frameworks — un solo archivo HTML. Para consultar el pronóstico astronómico a 14 días. Evalúa la calidad del cielo para observación nocturna combinando datos meteorológicos en un score 0–100.
+Pronóstico astronómico para observación de estrellas en Costa Rica (y el mundo). Evaluá la calidad del cielo para cada noche de los próximos 14 días con un score 0–100, combinando datos meteorológicos de **Open-Meteo (modelo ECMWF IFS 9 km)** y **precipitación horaria de meteoblue** (con ajuste de terreno `mLM`), servidos por un servidor Node propio.
+
+La app es una SPA **vanilla JS sin frameworks** organizada en **módulos ES** (`src/`) y empaquetada con **esbuild**, + un backend `server.mjs` que sirve los archivos estáticos y actúa como proxy de la API de meteoblue para no exponer la clave.
 
 ## Tabla de contenidos
 
 - [Cómo funciona](#cómo-funciona)
 - [Score de observación](#score-de-observación)
+  - [Rangos](#rangos)
+  - [Ventana óptima](#ventana-óptima)
+- [Estructura de la aplicación](#estructura-de-la-aplicación)
+- [Flujo de datos](#flujo-de-datos)
+- [Arquitectura técnica](#arquitectura-técnica)
+  - [APIs usadas](#apis-usadas)
+  - [Cadena de fallback](#cadena-de-fallback)
+  - [Fusión de precipitación (meteoblue)](#fusión-de-precipitación-meteoblue)
+  - [Geolocalización](#geolocalización)
 - [Cómo se usa](#cómo-se-usa)
   - [Seleccionar ubicación](#seleccionar-ubicación)
   - [Dashboard](#dashboard)
   - [Filtros](#filtros)
   - [Tema oscuro / claro](#tema-oscuro--claro)
-- [Arquitectura técnica](#arquitectura-técnica)
-  - [APIs usadas](#apis-usadas)
-  - [Cadena de fallback de modelos](#cadena-de-fallback-de-modelos)
-  - [Geolocalización](#geolocalización)
+- [Pruebas](#pruebas)
 - [Deploy](#deploy)
   - [Railway](#railway)
   - [Local](#local)
@@ -22,51 +30,137 @@ Web app auto-contenida, sin dependencias de build, cero frameworks — un solo a
 
 ## Cómo funciona
 
-Cada hora nocturna (18:00–05:59) se calcula un score basado en cuatro variables meteorológicas. El resultado se muestra en tarjetas por noche y en un gráfico de barras de 14 días.
+Cada **hora nocturna (18:00–05:59)** se calcula un score en función de nubosidad, probabilidad de lluvia, humedad relativa y visibilidad. El resultado se muestra en tarjetas por noche (14 noches) y en un gráfico de barras hora por hora.
+
+Las variables meteorológicas de base vienen de **Open-Meteo** (modelo `best_match`, que para Costa Rica resuelve a **ECMWF IFS 9 km**, con fallback a GFS). Sobre esos datos, para los **primeros 7 días** se superpone la **precipitación horaria de meteoblue** (cantidad y probabilidad), cuyo motor `mLM` ajusta la lluvia al terreno usando un DEM de 80 m + correcciones de radar/satélite — más preciso para las tormentas convectivas locales de las montañas costarricenses. Los días 8–14 conservan los datos de Open-Meteo.
+
+El campo de probabilidad de lluvia alimenta directamente el score (peso 20 %), por lo que la fusión mejora la precisión del pronóstico sin cambiar la lógica de evaluación.
 
 ## Score de observación
 
-| Variable              | Peso  | Fuente                          |
-| --------------------- | ----- | ------------------------------- |
-| Nubosidad             | 45 %  | `cloud_cover`                   |
-| Probabilidad de lluvia| 20 %  | `precipitation_probability`     |
-| Humedad relativa      | 20 %  | `relative_humidity_2m`          |
-| Visibilidad           | 15 %  | `visibility`                    |
+| Variable                | Peso  | Fuente en el código                          |
+| ----------------------- | ----- | -------------------------------------------- |
+| Nubosidad               | 45 %  | `cloud_cover` (Open-Meteo / IFS)             |
+| Probabilidad de lluvia  | 20 %  | `precipitation_probability` (meteoblue 0–7 d, luego IFS) |
+| Humedad relativa        | 20 %  | `relative_humidity_2m` (Open-Meteo / IFS)    |
+| Visibilidad             | 15 %  | `visibility` (Open-Meteo / IFS)              |
 
-Penalización: si el viento supera 20 km/h se descuenta del total. Si la humedad supera 90 % y la visibilidad es menor a 5 km, se aplica una penalización adicional por niebla (score se reduce 50 %).
+Penalización: si el viento supera 25 km/h se descuenta del total. Si la humedad supera 90 % y la visibilidad es menor a 5 km, se aplica una penalización adicional por niebla (el score se reduce 50 %).
 
 ### Rangos
 
-| Score      | Etiqueta    | Color  |
-| ---------- | ----------- | ------ |
-| ≥ 70       | Excelente   | Verde  |
-| 55–69      | Bueno       | Verde claro |
-| 40–54      | Parcial     | Ámbar  |
-| < 40       | Bloqueado   | Rojo   |
+| Score      | Etiqueta    | Color      |
+| ---------- | ----------- | ---------- |
+| ≥ 70       | Excelente   | Verde      |
+| 55–69      | Bueno       | Verde claro|
+| 40–54      | Parcial     | Ámbar      |
+| < 40       | Bloqueado   | Rojo       |
 
 ### Ventana óptima
 
-Se detecta automáticamente la mejor ventana dentro de cada noche buscando el tramo continuo más largo con score ≥ 55.
+Se detecta automáticamente dentro de cada noche el tramo continuo más largo con score ≥ 55 y se marca con ★.
+
+## Estructura de la aplicación
+
+| Archivo               | Rol                                                                                   |
+| --------------------- | ------------------------------------------------------------------------------------- |
+| `src/index.html`      | Markup de la SPA + enlaces a estilos/advertencias externas (Leaflet, Chart.js, fuentes). |
+| `src/styles.css`      | Estilos CSS (sin preprocesador).                                                      |
+| `src/js/main.js`      | **Entrada**: tab switching, `startForecast`, `refreshForecast`, tema, eventos e init. |
+| `src/js/api.js`       | Open-Meteo (`fetchForecast`) + fusión de precip. (`applyMeteobluePrecip`).            |
+| `src/js/scoring.js`   | `scoreHour`, `scoreColor`, `verdict` (funciones puras y testeables).                  |
+| `src/js/utils.js`     | Fechas, fase lunar, night slots, ventana óptima, `validateCoord` (funciones puras). |
+| `src/js/forecast.js`  | `renderForecast()`: tarjetas por noche, gráfico, filtros y explainer.                 |
+| `src/js/weather.js`   | Pestaña Clima: códigos WMO, condiciones actuales, 24 h y 7 días.                      |
+| `src/js/location.js`  | Selector: mapa (Leaflet), búsqueda, geocoding, autodetección GPS/IP, guardados.       |
+| `src/js/state.js`     | Estado mutable compartido (`S`: coordenadas, mapa, chart).                            |
+| `test/`               | Unit tests con `node:test` (lógica pura y de datos; sin dependencias extra).          |
+| `dist/` (gitignored)  | Build minificado generado por `npm run build`. **No se edita a mano.**                |
+| `server.mjs`          | Servidor Node (sin dependencias de runtime): sirve `dist/` y proxy `/api/meteoblue`.  |
+| `package.json`        | Scripts: `build` (esbuild + html-minifier-terser), `dev` (esbuild --watch), `test`, `start`. |
+| `.meteoblue_api_key`  | Clave de meteoblue para desarrollo local (gitignored; en producción se usa la env var). |
+| `README.md`           | Esta documentación.                                                                   |
+
+## Flujo de datos
+
+```
+Navegador (SPA)
+  │
+  ├─► api.open-meteo.com/v1/forecast   (directo, sin clave)
+  │      models=best_match → ECMWF IFS 9km (CR) → GFS fallback
+  │      14 días horarios: cloud, RH, visibilidad, viento, temperatura, lluvia…
+  │
+  └─► /api/meteoblue  (proxy propio, la clave NO sale del servidor)
+         my.meteoblue.com/packages/basic-1h  (7 días horarios)
+         → precipitation + precipitation_probability
+         → cache 10 min, fusión por marca de tiempo exacta (zona horaria local)
+         ↓
+  server.mjs fusiona → {hourly, daily} devuelto a la UI
+       ├─ applyMeteobluePrecip() sobrescribe lluvia y prob. de lluvia (días 0–6)
+       ├─ se recalculan precipitation_sum diarios desde las horas fusionadas
+       └─ si no hay clave o falla → se conservan los datos de Open-Meteo
+  → renderForecast() + renderWeather() → score, tarjetas, gráfico, pestañas
+```
+
+- **Alineación temporal**: el cliente le pasa a meteoblue la misma zona horaria que devuelve Open-Meteo (`timezone auto`, p. ej. `America/Costa_Rica`), por lo que ambas series horarias comparten etiquetas locales idénticas (`2026-10-09T18:00`). No hay desplazamientos UTC que corregir.
+- **Fusión por marca de tiempo**: se construye un mapa `hora → {precipitación, probabilidad}` y se aplica donde la hora coincida exactamente (primeros 7 días, 168 horas).
+- **Fallback silencioso**: si el proxy devuelve `{available:false}` (sin clave, red caída, error) o falla el `fetch`, la app continúa con los datos de Open-Meteo sin romperse.
+
+## Arquitectura técnica
+
+### APIs usadas
+
+| API                                      | Uso                                                            |
+| ---------------------------------------- | -------------------------------------------------------------- |
+| [Open-Meteo](https://open-meteo.com)     | Datos meteorológicos (14 días, horarios) + geocoding. Sin clave |
+| [meteoblue](https://business.meteoblue.com) | Precipitación horaria (7 días) vía proxy `/api/meteoblue`. Con clave |
+| [Nominatim](https://nominatim.org)       | Reverse geocoding (OSM)                                        |
+| [ipinfo.io](https://ipinfo.io)           | Geolocalización por IP (fallback)                              |
+| [OpenStreetMap](https://www.openstreetmap.org) | Tiles del mapa (Leaflet)                                  |
+
+### Cadena de fallback
+
+Existen **dos capas independientes** de fallback:
+
+1. **Modelos de Open-Meteo** (por si un modelo no entrega algún campo requerido o falla):
+   1. `best_match` — modelo óptimo automático (en Costa Rica: ECMWF IFS 9 km)
+   2. `gfs_seamless` — GFS con interpolación horaria
+   3. `gfs_global` — GFS cada 3 h
+
+   Cada modelo se valida con `missingFields()`: si algún campo requerido (`cloud_cover`, `precipitation_probability`, `relative_humidity_2m`, `visibility`, `wind_speed_10m`, `wind_direction_10m`, `dew_point_2m`) viene `null`, se prueba el siguiente.
+
+2. **Capas de datos enriquecidas**: la fusión de meteoblue es *aditiva*. Si no está disponible, la app funciona igual con Open-Meteo (solo pierde la mejora de precisión de lluvia en los primeros 7 días). La clave de meteoblue se lee del entorno (`METEOBLUE_API_KEY`) o del archivo `.meteoblue_api_key` (solo local); sin ella el proxy responde `{available:false}`.
+
+### Fusión de precipitación (meteoblue)
+
+- Por qué: en Costa Rica la lluvia es mayormente **convectiva** (tormentas locales de montaña). Los modelos globales (IFS 9 km o GFS 25 km) la ubican mal en tiempo/espacio. En un estudio global (WMO), la precipitación a 24 h de meteoblue obtuvo HSS 0.49–0.51 frente a 0.44–0.47 del resto, gracias al ajuste de terreno `mLM` (+DEM 80 m) y correcciones de radar/satélite.
+- Qué se reemplaza: solo `precipitation` (mm) y `precipitation_probability` (%) para horas ≤ 7 días. Nubosidad, humedad, viento y visibilidad siguen viniendo de IFS para no perder resolución horaria.
+- Dónde: `applyMeteobluePrecip()` en `src/js/api.js`, invocado desde `fetchForecast()` tras obtener los datos de Open-Meteo.
+
+### Geolocalización
+
+1. `navigator.geolocation.getCurrentPosition` (precisión baja, `enableHighAccuracy: false`)
+2. Si falla (común en macOS sin GPS), fallback por IP vía `ipinfo.io`
+3. Si todo falla, se muestra error y se invita a búsqueda manual
 
 ## Cómo se usa
 
 ### Seleccionar ubicación
 
-Tres formas de elegir coordenadas:
+1. **Mapa** — clic para colocar el marcador (se puede arrastrar).
+2. **Buscar ciudad** — autocompletado contra Open-Meteo Geocoding (mínimo 2 caracteres).
+3. **Coordenadas manuales** — latitud/longitud directas.
+4. **GPS / IP** — botón "Detectar ubicación por IP".
 
-1. **Mapa** — hacé clic en el mapa para colocar un marcador. Se puede arrastrar para ajustar.
-2. **Buscar ciudad** — autocompletado contra Open-Meteo Geocoding API (mínimo 2 caracteres).
-3. **Coordenadas manuales** — ingresá latitud / longitud directamente.
-4. **GPS / IP** — botón "Detectar ubicación por IP" usa geolocalización del navegador, con fallback a IP.
-
-Al elegir una ubicación, se hace reverse geocoding (Nominatim) para mostrar la dirección en el campo de búsqueda.
+Al elegir una ubicación se hace reverse geocoding (Nominatim) para mostrar la dirección.
 
 ### Dashboard
 
-- **Tarjetas por noche**: score promedio, pico (mejor hora), fase lunar, métricas (nubes, humedad, visibilidad, viento), timeline horario, ventana óptima.
-- **Gráfico general**: barras de score hora por hora en 14 noches, con divisores de medianoche.
+- **Tarjetas por noche**: score promedio, pico (mejor hora), fase lunar, métricas (nubes, humedad, visibilidad, viento), timeline horario y ventana óptima.
+- **Gráfico general**: barras de score hora por hora de las 14 noches, con divisores de medianoche.
 - **Refrescar datos**: botón ↻ en el header.
 - **Cambiar ubicación**: botón ← para volver al selector.
+- **Pestañas**: "Astro" y "Tiempo" (condiciones actuales, próximas 24 h y 7 días).
 
 ### Filtros
 
@@ -76,74 +170,65 @@ Filtro "Todas / Solo excelentes" sobre las tarjetas de noche. Muestra el conteo 
 
 Botón ☀/☾ en el header. La preferencia se persiste en `localStorage`.
 
-## Arquitectura técnica
+## Pruebas
 
-### APIs usadas
+```bash
+npm test
+```
 
-| API                                    | Uso                          |
-| -------------------------------------- | ---------------------------- |
-| [Open-Meteo](https://open-meteo.com)   | Datos meteorológicos y geocoding |
-| [Nominatim](https://nominatim.org)     | Reverse geocoding (OSM)      |
-| [ipinfo.io](https://ipinfo.io)         | Geolocalización por IP       |
-| [OpenStreetMap](https://www.openstreetmap.org) | Tiles del mapa (Leaflet) |
+Corren con el runner nativo `node:test` (Node ≥ 18, sin dependencias extra) y cubren la **lógica pura y de datos** de la app:
 
-### Cadena de fallback de modelos
+- `test/scoring.test.js` — `scoreHour`, `scoreColor`, `verdict` (pesos, penalizaciones de viento/niebla).
+- `test/utils.test.js` — fechas, fases lunares, night slots, ventana óptima, `validateCoord`.
+- `test/weather.test.js` — códigos WMO, iconos día/noche, textos de cielo.
+- `test/api.test.js` — `buildApiUrl`, `missingFields`, cadena de fallback de modelos, y **fusión de meteoblue** (`applyMeteobluePrecip`) con `fetch` simulado.
 
-Open-Meteo ofrece distintos modelos. La app intenta en orden:
-
-1. `best_match` — modelo óptimo automático
-2. `gfs_seamless` — GFS con interpolación horaria
-3. `gfs_global` — GFS cada 3 h
-
-Cada modelo se valida con `missingFields()`: si algún campo requerido (`cloud_cover`, `precipitation_probability`, `relative_humidity_2m`, `visibility`, `wind_speed_10m`) viene `null`, se prueba el siguiente.
-
-### Geolocalización
-
-1. `navigator.geolocation.getCurrentPosition` (precisión baja, `enableHighAccuracy: false`)
-2. Si falla (común en macOS sin GPS), fallback por IP via `ipinfo.io`
-3. Si todo falla, se muestra error y se invita a búsqueda manual
-
-### Formato de datos
-
-El HTML renderizado es una single-page application (SPA) en un solo archivo. Los datos meteorológicos viajan como JSON desde Open-Meteo y se procesan completamente en el cliente.
+> Las vistas de DOM (`renderForecast`, `renderWeather`, mapa, pestañas) no se testean aquí: se verifican con el flujo real del navegador (smoke test en Chrome headless).
 
 ## Deploy
 
 ### Railway
 
-Crear un `package.json` en la raíz:
+El servidor está en `server.mjs`. En el panel de Railway:
 
-```json
-{
-  "name": "stargazing-forecast",
-  "scripts": {
-    "start": "npx serve . -s -l $PORT"
-  }
-}
-```
+1. Conectá el repo de GitHub (se autodetecta como Node.js y corre `npm start`).
+2. Agregá la **environment variable** `METEOBLUE_API_KEY` con tu clave de meteoblue.
+3. Listo. Sin clave, la app igual funciona (modo fallback, sin fusión de lluvia).
 
-Conectar repo de GitHub a Railway. Se autodetecta como Node.js y corre `npm start`. No necesita configuración adicional.
+El `package.json` ya trae `"start": "node server.mjs"`.
 
 ### Local
 
 ```bash
-# Servir con Python
-python3 -m http.server 8080
+# Instalar dependencias de build (una vez)
+npm install
 
-# O con Node
-npx serve . -s
+# Copiá tu clave de meteoblue (opcional; si no, la app funciona en modo fallback)
+echo "TU_CLAVE" > .meteoblue_api_key
 
-# O con PHP
-php -S localhost:8080
+# Generar el build en dist/ (tras editar cualquier archivo de src/)
+npm run build
+
+# Servir app + proxy meteoblue
+npm start
+# → http://localhost:3000
+
+# Modo desarrollo: esbuild recompila dist/app.js al guardar src/js/
+npm run dev
 ```
 
-> **Importante**: el archivo debe servirse via HTTP, no `file://`, porque `fetch()` y la geolocalización del navegador no funcionan con protocolo file.
+> El servidor sirve `dist/`: tras editar `src/` hay que regenerarlo con `npm run build` (o `npm run dev` mientras trabajás en JS).
+
+> **Importante**: la app debe servirse via HTTP con `npm start`, no con `file://` ni con un servidor estático simple, porque el proxy `/api/meteoblue` es necesario para la fusión de precipitación (y `fetch()`/geolocalización del navegador no funcionan con `file://`).
 
 ## Stack
 
-- Vanilla JS (sin framework)
-- Chart.js 4 para el gráfico de barras
-- Leaflet 1.9 + OpenStreetMap para el mapa
-- Open-Meteo API (meteorología + geocoding)
+- Vanilla JS (sin framework), **módulos ES** en `src/`
+- Chart.js 4 (gráfico de barras)
+- Leaflet 1.9 + OpenStreetMap (mapa)
+- Node.js ≥ 18 (servidor propio, sin dependencias de runtime)
+- Open-Meteo API (meteorología + geocoding + IFS/GFS)
+- meteoblue Forecast API (`basic-1h`) vía proxy
 - Nominatim API (reverse geocoding)
-- Sin dependencias de build — un solo `.html`
+- Build: `esbuild` (bundle + minify de JS y CSS) + `html-minifier-terser` (HTML)
+- Tests: `node:test` (runner nativo, sin dependencias extra)
